@@ -127,7 +127,7 @@ export class OrdersService {
   // Polling kiểm tra trạng thái thanh toán từ Frontend
   async getStatus(orderIdOrCode: string) {
     const res = await this.db.query(
-      `SELECT id, order_code, status, total_amount, paid_at 
+      `SELECT id, order_code, status, total_amount, paid_at, customer_email, customer_name 
        FROM orders 
        WHERE id = $1 OR order_code = $1 OR order_code = $2`,
       [orderIdOrCode, orderIdOrCode.replace(/^BL-/, '')],
@@ -144,6 +144,8 @@ export class OrdersService {
       status: row.status,
       amount: row.total_amount,
       paidAt: row.paid_at,
+      customerEmail: row.customer_email,
+      customerName: row.customer_name,
       message:
         row.status === 'PAID'
           ? 'Giao dịch thanh toán thành công!'

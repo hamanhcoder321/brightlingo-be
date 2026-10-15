@@ -252,14 +252,18 @@ export class PaymentsService implements OnModuleInit {
     }
 
     // Tự động gửi link tài liệu số qua email (Chỉ chạy sau khi Transaction đã Commit thành công)
-    this.logger.log(`ℹ️ [TEST MODE] Tạm bỏ qua gửi email tài liệu cho đơn hàng #${order.order_code}`);
-    /*
     try {
-      await this.emailService.sendDeliveryEmail(order.id, false);
-    } catch (emailErr) {
+      this.logger.log(`📧 Đang kích hoạt gửi email tài liệu cho đơn hàng #${order.order_code} tới ${order.customer_email}...`);
+      const emailResult = await this.emailService.sendDeliveryEmail(order.id, false);
+      if (emailResult.success) {
+        this.paymentLogger.logEmailSuccess(order.order_code, order.customer_email, emailResult.providerMessageId);
+      } else {
+        this.paymentLogger.logEmailFailed(order.order_code, order.customer_email, emailResult.error || 'Unknown error');
+      }
+    } catch (emailErr: any) {
       this.logger.error(`Failed to auto-deliver email for order #${order.order_code}:`, emailErr);
+      this.paymentLogger.logEmailFailed(order.order_code, order.customer_email, emailErr?.message || String(emailErr));
     }
-    */
 
     return { success: true, code: '00', message: 'Payment confirmed successfully' };
   }

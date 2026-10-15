@@ -46,9 +46,17 @@ export class EmailService {
       // Fallback template mặc định
       template = {
         id: null,
-        subject: `[BrightLingo] Kích hoạt thành công khóa học: {{course_name}} (Đơn hàng #{{order_code}})`,
-        body_html: `<p>Xin chào {{customer_name}}, đơn hàng #{{order_code}} đã thanh toán thành công. Truy cập tài liệu tại: <a href="{{resource_link}}">{{resource_link}}</a></p>`,
-        body_text: `Xin chào {{customer_name}}, đơn hàng #{{order_code}} đã thanh toán thành công. Link: {{resource_link}}`,
+        subject: `[BrightLingo] Kích hoạt khóa học & Gửi tài liệu (Đơn hàng #{{order_code}})`,
+        body_html: `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
+          <h2 style="color: #2563eb; margin-top: 0;">Chào mừng bạn đến với BrightLingo!</h2>
+          <p>Xin chào <strong>{{customer_name}}</strong>,</p>
+          <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; font-size: 16px; font-weight: bold; color: #1e40af;">brightlingo xin gửi tài liệu nhé.</p>
+          </div>
+          <p>Hệ thống đã xác nhận thanh toán thành công cho đơn hàng <strong>#{{order_code}}</strong> (Khóa học: <strong>{{course_name}}</strong>) với số tiền <strong>{{amount_paid}}đ</strong>.</p>
+          <p style="font-size: 13px; color: #64748b;">(Đây là email kiểm thử hệ thống gửi tự động từ BrightLingo khi hoàn tất thanh toán).</p>
+        </div>`,
+        body_text: `Xin chào {{customer_name}},\n\nbrightlingo xin gửi tài liệu nhé.\n\nĐơn hàng #{{order_code}} ({{course_name}}) đã thanh toán thành công với số tiền {{amount_paid}}đ.`,
       };
     }
 
@@ -145,6 +153,7 @@ export class EmailService {
 
     return {
       success: emailStatus === 'SENT',
+      error: lastError,
       providerMessageId: providerMsgId,
       resendCount: currentResendCount,
     };
