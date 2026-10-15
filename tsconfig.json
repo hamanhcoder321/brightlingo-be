@@ -1,23 +1,34 @@
 {
   "compilerOptions": {
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "resolvePackageJsonExports": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
+    "ignoreDeprecations": "6.0",
+    "module": "commonjs",
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "target": "ES2023",
-    "types": ["node", "jest"],
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": ".",
+    "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
-    "strict": true,
-    "strictPropertyInitialization": false
+    "strictNullChecks": false,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@/*": ["src/*"],
+      "@/common": ["src/common"],
+      "@/common/*": ["src/common/*"],
+      "@/config": ["src/config"],
+      "@/config/*": ["src/config/*"],
+      "@/core": ["src/core"],
+      "@/core/*": ["src/core/*"],
+      "@/modules": ["src/modules"],
+      "@/modules/*": ["src/modules/*"]
+    }
   }
 }

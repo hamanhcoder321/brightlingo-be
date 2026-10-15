@@ -1,17 +1,64 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { DatabaseModule } from './database/database.module';
-import { CoursesModule } from './courses/courses.module';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+
+import {
+  appConfig,
+  databaseConfig,
+  mailConfig,
+  paymentConfig,
+} from '@/config';
+
+import { DatabaseModule, MailModule } from '@/core';
+import { HttpExceptionFilter, LoggingInterceptor } from '@/common';
+
+import {
+  CoursesModule,
+  OrdersModule,
+  PaymentsModule,
+  CouponsModule,
+  LeadsModule,
+  EmailModule,
+  PagesModule,
+  SettingsModule,
+  AuditModule,
+  AdminModule,
+} from '@/modules';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [appConfig, databaseConfig, mailConfig, paymentConfig],
+      envFilePath: ['.env.local', '.env'],
+    }),
     DatabaseModule,
+    MailModule,
+    AuditModule,
     CoursesModule,
+    OrdersModule,
+    PaymentsModule,
+    CouponsModule,
+    LeadsModule,
+    EmailModule,
+    PagesModule,
+    SettingsModule,
+    AdminModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
+    },
+  ],
 })
 export class AppModule {}
