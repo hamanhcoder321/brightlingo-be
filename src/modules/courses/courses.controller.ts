@@ -1,13 +1,18 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { CoursesService } from './courses.service';
 
 @Controller('api/courses')
 export class CoursesController {
   constructor(private readonly coursesService: CoursesService) {}
 
+  @Get('categories')
+  async getCategories() {
+    return this.coursesService.getCategories();
+  }
+
   @Get()
-  async getAll() {
-    return this.coursesService.getAll();
+  async getAll(@Query('categoryId') categoryId?: string) {
+    return this.coursesService.getAll(categoryId);
   }
 
   @Get(':slug')

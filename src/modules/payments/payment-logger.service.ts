@@ -139,4 +139,16 @@ export class PaymentLoggerService {
     const msg = `CẢNH BÁO CHỮ KÝ WEBHOOK KHÔNG HỢP LỆ (${gateway}) | Nguyên nhân: ${errorReason}`;
     this.appendLine('SECURITY_WARNING', msg, payload);
   }
+
+  // 7. Log gửi email giao tài liệu thành công
+  logEmailSuccess(orderCode: string, recipient: string, messageId?: string) {
+    const msg = `GỬI EMAIL THÀNH CÔNG | Mã đơn: #${orderCode} | Người nhận: ${recipient} | MessageID: ${messageId || 'N/A'}`;
+    this.appendLine('EMAIL_SUCCESS', msg);
+  }
+
+  // 8. Log gửi email giao tài liệu thất bại
+  logEmailFailed(orderCode: string, recipient: string, error: string) {
+    const msg = `GỬI EMAIL THẤT BẠI | Mã đơn: #${orderCode} | Người nhận: ${recipient} | Lỗi: ${error}`;
+    this.appendLine('EMAIL_FAILED', msg);
+  }
 }
