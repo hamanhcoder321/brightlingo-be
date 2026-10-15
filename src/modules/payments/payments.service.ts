@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PayOS } from '@payos/node';
 import { DatabaseService } from '@/core/database';
 import { EmailService } from '@/modules/email';
+import { PaymentLoggerService } from './payment-logger.service';
 import { BankNotiWebhookDto } from './dto/banknoti-webhook.dto';
 
 export interface CreatePaymentLinkOptions {
@@ -23,6 +24,7 @@ export class PaymentsService implements OnModuleInit {
     private readonly db: DatabaseService,
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
+    private readonly paymentLogger: PaymentLoggerService,
   ) {}
 
   onModuleInit() {
@@ -99,8 +101,15 @@ export class PaymentsService implements OnModuleInit {
   // 2. Xử lý Webhook tự động từ PayOS
   async handlePayOSWebhook(webhookBody: any) {
     this.logger.log(`Received PayOS Webhook: ${JSON.stringify(webhookBody)}`);
+    // Ghi nhận sự kiện nhận Webhook vào file logs/payments.log
+    this.paymentLogger.logWebhookReceived('PAYOS', webhookBody);
 
     if (!this.payos) {
+      this.paymentLogger.logServerError({
+        context: 'PayOS Init Check',
+        errorMessage: 'PayOS service is not initialized',
+        payload: webhookBody,
+      });
       throw new BadRequestException('PayOS service is not initialized');
     }
 
@@ -110,13 +119,23 @@ export class PaymentsService implements OnModuleInit {
       verifiedData = await this.payos.webhooks.verify(webhookBody);
       this.logger.log(`✅ PayOS Webhook signature verified successfully: OrderCode #${verifiedData.orderCode}`);
     } catch (verifyErr: any) {
-      this.logger.error('❌ PayOS Webhook signature verification failed:', verifyErr?.message || verifyErr);
+      this.paymentLogger.logSignatureFailed('PAYOS', webhookBody, verifyErr?.message || String(verifyErr));
       throw new UnauthorizedException('Chữ ký Webhook không hợp lệ');
     }
 
     const orderCodeStr = String(verifiedData.orderCode);
     const amount = Number(verifiedData.amount);
     const externalTxId = String(verifiedData.reference || verifiedData.paymentLinkId || orderCodeStr);
+
+    // Kiểm tra trạng thái giao dịch từ Webhook (nếu bị hủy hoặc thất bại)
+    if (webhookBody.code && webhookBody.code !== '00') {
+      this.paymentLogger.logCancelled({
+        orderCode: orderCodeStr,
+        reason: webhookBody.desc || 'Giao dịch bị hủy hoặc không thành công từ PayOS',
+        details: webhookBody,
+      });
+      return { success: false, code: webhookBody.code, message: webhookBody.desc };
+    }
 
     // Bước 2: Kiểm tra Idempotency chống xử lý trùng lặp giao dịch (BR-04)
     const existingPayment = await this.db.query(
@@ -131,59 +150,128 @@ export class PaymentsService implements OnModuleInit {
 
     // Bước 3: Tìm đơn hàng trong DB theo order_code
     const orderRes = await this.db.query(
-      `SELECT id, order_code, total_amount, status, customer_email 
+      `SELECT id, order_code, total_amount, status, customer_email, customer_name, customer_phone 
        FROM orders 
        WHERE order_code = $1 OR order_code = $2`,
       [orderCodeStr, `BL-${orderCodeStr}`],
     );
 
     if (orderRes.rows.length === 0) {
-      this.logger.warn(`Order not found for PayOS orderCode: ${orderCodeStr}`);
+      this.paymentLogger.logServerError({
+        context: 'Match Order',
+        errorMessage: `Không tìm thấy đơn hàng với mã #${orderCodeStr} trong Database`,
+        orderCode: orderCodeStr,
+        payload: webhookBody,
+      });
       return { success: true, isMatched: false, message: 'Order not found' };
     }
 
     const order = orderRes.rows[0];
 
-    // Bước 4: Lưu giao dịch vào bảng payments
-    await this.db.query(
-      `INSERT INTO payments (
-        order_id, order_code, gateway, account_number,
-        transaction_date, amount, description, bill_id,
-        external_transaction_id, is_matched, webhook_payload
-      ) VALUES ($1, $2, 'PAYOS', $3, $4, $5, $6, $7, $8, true, $9)`,
-      [
-        order.id,
-        order.order_code,
-        verifiedData.accountNumber || null,
-        verifiedData.transactionDateTime ? new Date(verifiedData.transactionDateTime) : new Date(),
-        amount,
-        verifiedData.description || '',
-        verifiedData.paymentLinkId || null,
-        externalTxId,
-        JSON.stringify(webhookBody),
-      ],
-    );
+    // Sử dụng Database Transaction để đảm bảo tính toàn vẹn tuyệt đối (ACID)
+    const client = await this.db.getPool().connect();
+    try {
+      await client.query('BEGIN');
 
-    // Bước 5: Cập nhật đơn hàng sang PAID & kích hoạt gửi tài liệu qua Email (BR-03, BR-05)
-    if (order.status === 'PENDING') {
-      await this.db.query(
-        `UPDATE orders 
-         SET status = 'PAID', paid_at = NOW(), updated_at = NOW() 
-         WHERE id = $1`,
-        [order.id],
+      // Bước 4: Lưu giao dịch vào bảng payments
+      await client.query(
+        `INSERT INTO payments (
+          order_id, order_code, gateway, account_number,
+          transaction_date, amount, description, bill_id,
+          external_transaction_id, is_matched, webhook_payload
+        ) VALUES ($1, $2, 'PAYOS', $3, $4, $5, $6, $7, $8, true, $9)`,
+        [
+          order.id,
+          order.order_code,
+          verifiedData.accountNumber || null,
+          verifiedData.transactionDateTime ? new Date(verifiedData.transactionDateTime) : new Date(),
+          amount,
+          verifiedData.description || '',
+          verifiedData.paymentLinkId || null,
+          externalTxId,
+          JSON.stringify(webhookBody),
+        ],
       );
 
-      this.logger.log(`🎉 Order #${order.order_code} transitioned to PAID via PayOS!`);
+      // Bước 5: Cập nhật đơn hàng sang PAID & Thống kê khách hàng (BR-03, BR-12)
+      if (order.status === 'PENDING') {
+        await client.query(
+          `UPDATE orders 
+           SET status = 'PAID', paid_at = NOW(), updated_at = NOW() 
+           WHERE id = $1`,
+          [order.id],
+        );
 
-      // Tự động gửi link tài liệu số qua email
-      try {
-        await this.emailService.sendDeliveryEmail(order.id, false);
-      } catch (emailErr) {
-        this.logger.error(`Failed to auto-deliver email for order #${order.order_code}:`, emailErr);
+        if (order.customer_email) {
+          await client.query(
+            `INSERT INTO customers (email, full_name, phone, total_orders, total_spent)
+             VALUES ($1, $2, $3, 1, $4)
+             ON CONFLICT (email) DO UPDATE 
+             SET total_orders = customers.total_orders + 1,
+                 total_spent = customers.total_spent + EXCLUDED.total_spent,
+                 updated_at = NOW()`,
+            [
+              order.customer_email,
+              order.customer_name || 'Học viên',
+              order.customer_phone || null,
+              order.total_amount,
+            ],
+          );
+        }
+
+        this.logger.log(`🎉 Order #${order.order_code} transitioned to PAID via PayOS!`);
       }
+
+      await client.query('COMMIT');
+
+      // Ghi log thanh toán thành công vào file logs/payments.log
+      this.paymentLogger.logSuccess({
+        orderCode: order.order_code,
+        amount,
+        gateway: 'PAYOS',
+        externalTransactionId: externalTxId,
+        customerEmail: order.customer_email,
+        customerName: order.customer_name,
+        bankAccountNumber: verifiedData.accountNumber,
+        transactionDate: verifiedData.transactionDateTime,
+        notes: `PayOS PaymentLinkId: ${verifiedData.paymentLinkId || 'N/A'}`,
+      });
+    } catch (dbErr: any) {
+      await client.query('ROLLBACK');
+      this.paymentLogger.logServerError({
+        context: 'PayOS Webhook Transaction Rollback',
+        errorMessage: dbErr?.message || String(dbErr),
+        orderCode: orderCodeStr,
+        stack: dbErr?.stack,
+        payload: webhookBody,
+      });
+      // Ném lỗi ra để PayOS nhận HTTP Error và tự động Retry, tuyệt đối không nuốt lỗi
+      throw dbErr;
+    } finally {
+      client.release();
     }
 
+    // Tự động gửi link tài liệu số qua email (Chỉ chạy sau khi Transaction đã Commit thành công)
+    this.logger.log(`ℹ️ [TEST MODE] Tạm bỏ qua gửi email tài liệu cho đơn hàng #${order.order_code}`);
+    /*
+    try {
+      await this.emailService.sendDeliveryEmail(order.id, false);
+    } catch (emailErr) {
+      this.logger.error(`Failed to auto-deliver email for order #${order.order_code}:`, emailErr);
+    }
+    */
+
     return { success: true, code: '00', message: 'Payment confirmed successfully' };
+  }
+
+  // Ghi log hủy đơn (từ Web hoặc Timeout)
+  logOrderCancelled(orderCode: string, reason?: string, details?: any) {
+    this.paymentLogger.logCancelled({ orderCode, reason, details });
+  }
+
+  // Ghi log đơn hết hạn
+  logOrderExpired(orderCode: string, details?: any) {
+    this.paymentLogger.logExpired(orderCode, details);
   }
 
   // 3. Đăng ký Webhook URL với PayOS (Tùy chọn tiện ích)

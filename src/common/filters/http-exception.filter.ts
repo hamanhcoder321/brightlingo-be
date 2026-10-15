@@ -38,6 +38,24 @@ export class HttpExceptionFilter implements ExceptionFilter {
       )}`,
     );
 
+    // Tự động ghi lại lỗi server (5xx) hoặc lỗi liên quan thanh toán/webhook vào file logs/payments.log
+    if (status >= 500 || request.url.includes('webhook') || request.url.includes('payment') || request.url.includes('order')) {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const logDir = path.resolve(process.cwd(), 'logs');
+        if (!fs.existsSync(logDir)) {
+          fs.mkdirSync(logDir, { recursive: true });
+        }
+        const now = new Date();
+        const timeStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        const logLine = `[${timeStr}] [SERVER_ERROR] [${request.method}] ${request.url} | Status: ${status} | Error: ${typeof message === 'object' ? JSON.stringify(message) : message} | IP: ${request.ip}\n`;
+        fs.appendFileSync(path.resolve(logDir, 'payments.log'), logLine, 'utf8');
+      } catch (fileErr) {
+        this.logger.error('Failed to append to payments.log:', fileErr);
+      }
+    }
+
     response.status(status).json({
       success: false,
       statusCode: status,
