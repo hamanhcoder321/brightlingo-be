@@ -8,3 +8,5 @@ export * from './pages';
 export * from './settings';
 export * from './audit';
 export * from './admin';
+export * from './upload';
+export * from './auth';

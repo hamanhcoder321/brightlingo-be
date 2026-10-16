@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { DatabaseService } from '@/core/database';
 import { PaymentsService } from '@/modules/payments';
+import { SecurityUtil } from '@/common/security/security.util';
 import { CreateOrderDto } from './dto/create-order.dto';
 
 @Injectable()
@@ -70,6 +71,12 @@ export class OrdersService {
     const numericOrderCode = Math.floor(Date.now() / 1000);
     const orderCodeStr = String(numericOrderCode);
 
+    const cleanCustomerName = SecurityUtil.sanitizeText(dto.customerName);
+    const cleanCustomerEmail = SecurityUtil.sanitizeText(dto.customerEmail).toLowerCase().trim();
+    const cleanCustomerPhone = dto.customerPhone ? SecurityUtil.sanitizeText(dto.customerPhone) : null;
+    const cleanLandingUrl = dto.landingUrl ? SecurityUtil.sanitizeUrl(dto.landingUrl, 'Landing URL') : null;
+    const cleanReferrerUrl = dto.referrerUrl ? SecurityUtil.sanitizeUrl(dto.referrerUrl, 'Referrer URL') : null;
+
     // 3. Lưu đơn hàng vào Database (Snapshot giá & Attribution theo BR-07, BR-08, BR-09)
     await this.db.query(
       `INSERT INTO orders (
@@ -86,11 +93,16 @@ export class OrdersService {
         $21, $22
       )`,
       [
-        orderId, orderCodeStr, dto.customerName, dto.customerEmail, dto.customerPhone || null,
+        orderId, orderCodeStr, cleanCustomerName, cleanCustomerEmail, cleanCustomerPhone,
         course.id, course.title, course.slug, originalPrice, unitPrice,
         discountAmount, totalAmount, couponId, couponCode,
-        dto.ref || null, dto.utmSource || null, dto.utmMedium || null, dto.utmCampaign || null,
-        dto.utmContent || null, dto.utmTerm || null, dto.landingUrl || null, dto.referrerUrl || null,
+        dto.ref ? SecurityUtil.sanitizeText(dto.ref) : null,
+        dto.utmSource ? SecurityUtil.sanitizeText(dto.utmSource) : null,
+        dto.utmMedium ? SecurityUtil.sanitizeText(dto.utmMedium) : null,
+        dto.utmCampaign ? SecurityUtil.sanitizeText(dto.utmCampaign) : null,
+        dto.utmContent ? SecurityUtil.sanitizeText(dto.utmContent) : null,
+        dto.utmTerm ? SecurityUtil.sanitizeText(dto.utmTerm) : null,
+        cleanLandingUrl, cleanReferrerUrl,
       ],
     );
 

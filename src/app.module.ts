@@ -23,6 +23,8 @@ import {
   SettingsModule,
   AuditModule,
   AdminModule,
+  UploadModule,
+  AuthModule,
 } from '@/modules';
 
 import { AppController } from './app.controller';
@@ -47,6 +49,8 @@ import { AppService } from './app.service';
     PagesModule,
     SettingsModule,
     AdminModule,
+    UploadModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,4 +1,13 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Param,
+  Body,
+  Query,
+} from '@nestjs/common';
 import { CoursesService } from './courses.service';
 
 @Controller('api/courses')
@@ -18,5 +27,20 @@ export class CoursesController {
   @Get(':slug')
   async getBySlug(@Param('slug') slug: string) {
     return this.coursesService.getBySlug(slug);
+  }
+
+  @Post()
+  async createCourse(@Body() data: any) {
+    return this.coursesService.createCourse(data);
+  }
+
+  @Put(':id')
+  async updateCourse(@Param('id') id: string, @Body() data: any) {
+    return this.coursesService.updateCourse(id, data);
+  }
+
+  @Delete(':id')
+  async deleteCourse(@Param('id') id: string) {
+    return this.coursesService.deleteCourse(id);
   }
 }
