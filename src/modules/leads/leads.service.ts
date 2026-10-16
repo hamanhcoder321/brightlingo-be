@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { DatabaseService } from '@/core/database';
+import { SecurityUtil } from '@/common/security/security.util';
 import { CreateLeadDto } from './dto/create-lead.dto';
 
 @Injectable()
@@ -14,6 +15,17 @@ export class LeadsService {
       throw new BadRequestException('Vui lòng nhập đầy đủ họ tên và số điện thoại');
     }
 
+    const cleanName = SecurityUtil.sanitizeText(dto.fullName);
+    const cleanPhone = SecurityUtil.sanitizeText(dto.phone);
+    const cleanEmail = dto.email ? SecurityUtil.sanitizeText(dto.email) : null;
+    const cleanCourseSlug = dto.courseSlug ? SecurityUtil.sanitizeText(dto.courseSlug) : null;
+    const cleanCourseName = dto.courseName ? SecurityUtil.sanitizeText(dto.courseName) : null;
+    const cleanMessage = dto.message ? SecurityUtil.sanitizeText(dto.message) : null;
+    const cleanRef = dto.ref ? SecurityUtil.sanitizeText(dto.ref) : null;
+    const cleanUtmSource = dto.utmSource ? SecurityUtil.sanitizeText(dto.utmSource) : null;
+    const cleanUtmMedium = dto.utmMedium ? SecurityUtil.sanitizeText(dto.utmMedium) : null;
+    const cleanUtmCampaign = dto.utmCampaign ? SecurityUtil.sanitizeText(dto.utmCampaign) : null;
+
     const res = await this.db.query(
       `INSERT INTO consultation_leads (
         full_name, phone, email, course_slug, course_name, message, status,
@@ -21,16 +33,16 @@ export class LeadsService {
       ) VALUES ($1, $2, $3, $4, $5, $6, 'NEW', $7, $8, $9, $10)
       RETURNING id, created_at`,
       [
-        dto.fullName,
-        dto.phone,
-        dto.email || null,
-        dto.courseSlug || null,
-        dto.courseName || null,
-        dto.message || null,
-        dto.ref || null,
-        dto.utmSource || null,
-        dto.utmMedium || null,
-        dto.utmCampaign || null,
+        cleanName,
+        cleanPhone,
+        cleanEmail,
+        cleanCourseSlug,
+        cleanCourseName,
+        cleanMessage,
+        cleanRef,
+        cleanUtmSource,
+        cleanUtmMedium,
+        cleanUtmCampaign,
       ],
     );
 

@@ -12,6 +12,9 @@ export class CouponsService {
     }
 
     const cleanCode = code.trim().toUpperCase();
+    if (!/^[A-Z0-9_-]{1,50}$/.test(cleanCode)) {
+      throw new BadRequestException('Mã giảm giá chứa ký tự không hợp lệ');
+    }
 
     const res = await this.db.query(
       `SELECT * FROM coupons 

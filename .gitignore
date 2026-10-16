@@ -43,3 +43,7 @@ Thumbs.db
 *.tsbuildinfo
 
 .agents
+
+# Uploads
+/uploads/*
+!/uploads/**/.gitkeep
