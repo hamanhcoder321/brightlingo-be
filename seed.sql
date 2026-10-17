@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS courses (
     views_count INT DEFAULT 0,
     buyers_count INT DEFAULT 0,
     is_social_proof_enabled BOOLEAN DEFAULT true,
+    is_featured BOOLEAN NOT NULL DEFAULT false,
     status VARCHAR(30) NOT NULL DEFAULT 'PUBLISHED', -- DRAFT, PUBLISHED, HIDDEN
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -61,6 +62,16 @@ CREATE TABLE IF NOT EXISTS course_faqs (
     display_order INT DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 3.1 BẢNG COURSE_VIEWS (Thống kê lượt xem thực tế khóa học)
+CREATE TABLE IF NOT EXISTS course_views (
+    id BIGSERIAL PRIMARY KEY,
+    course_id VARCHAR(50) NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    course_slug VARCHAR(100),
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- 4. BẢNG CUSTOMERS (Khách mua hàng)
@@ -262,7 +273,7 @@ INSERT INTO courses (
     rating, reviews_count, students_count, last_updated,
     price, original_price, discount_percent, image,
     video_demo_title, video_demo_duration, video_demo_subtitle, video_url,
-    benefits, curriculum, bank_info, resource_link, status
+    benefits, curriculum, bank_info, resource_link, is_featured, status
 ) VALUES (
     'course-1',
     'english-for-real-life',
@@ -318,6 +329,7 @@ INSERT INTO courses (
         "orderCodePrefix": "BL"
     }'::jsonb,
     'https://drive.google.com/drive/folders/tai-lieu-english-for-real-life-vip',
+    true,
     'PUBLISHED'
 ) ON CONFLICT (slug) DO NOTHING;
 
@@ -353,8 +365,8 @@ INSERT INTO email_templates (
 -- 3. Seed Cấu hình Hệ thống cơ bản (Settings)
 INSERT INTO settings (group_name, key, value, description) VALUES
 ('BRANDING', 'site_name', 'BrightLingo', 'Tên thương hiệu website'),
-('SUPPORT', 'support_phone', '0988.123.456', 'Hotline hỗ trợ học viên'),
-('SUPPORT', 'support_email', 'hotro@brightlingo.com', 'Hộp thư hỗ trợ khách hàng'),
+('SUPPORT', 'support_phone', '1900 8989', 'Hotline hỗ trợ học viên'),
+('SUPPORT', 'support_email', 'support@brightlingo.vn', 'Hộp thư hỗ trợ khách hàng'),
 ('PAYMENT', 'bank_name', 'MBBANK', 'Tên ngân hàng nhận thanh toán'),
 ('PAYMENT', 'account_number', '0399046519', 'Số tài khoản nhận tiền'),
 ('PAYMENT', 'account_name', 'HA VAN MANH', 'Tên chủ tài khoản ngân hàng')

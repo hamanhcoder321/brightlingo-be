@@ -25,14 +25,19 @@ export class CoursesService {
   // Lấy chi tiết 1 khóa học theo id hoặc slug
   async getBySlug(slug: string) {
     const res = await this.db.query(
-      `SELECT id, slug, category_id, category_name, tag_badge, type_badge, title,
-              rating, reviews_count, students_count, last_updated,
-              price, original_price, discount_percent, image,
-              video_demo_title, video_demo_duration, video_demo_subtitle, video_url,
-              benefits, curriculum, bank_info, views_count, buyers_count, status,
-              resource_link, seo_title, seo_description, og_image
-       FROM courses 
-       WHERE (slug = $1 OR id = $1) AND deleted_at IS NULL`,
+      `SELECT c.id, c.slug, c.category_id, c.category_name, c.tag_badge, c.type_badge, c.title,
+              c.rating, c.reviews_count, c.students_count, c.last_updated,
+              c.price, c.original_price, c.discount_percent, c.image,
+              c.video_demo_title, c.video_demo_duration, c.video_demo_subtitle, c.video_url,
+              c.benefits, c.curriculum, c.bank_info, c.views_count, c.is_featured, c.status,
+              c.resource_link, c.seo_title, c.seo_description, c.og_image,
+              COUNT(o.id) FILTER (WHERE o.status = 'PAID')::int AS buyers_count,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.status = 'PAID'), 0)::int AS real_revenue,
+              COUNT(o.id)::int AS created_count
+       FROM courses c
+       LEFT JOIN orders o ON (c.id = o.course_id OR c.slug = o.course_slug)
+       WHERE (c.slug = $1 OR c.id = $1) AND c.deleted_at IS NULL
+       GROUP BY c.id`,
       [slug],
     );
 
@@ -47,23 +52,27 @@ export class CoursesService {
   // Lấy danh sách tất cả khóa học đang bán (Public API, hỗ trợ lọc theo categoryId)
   async getAll(categoryId?: string) {
     let query = `
-      SELECT id, slug, category_id, category_name, tag_badge, type_badge, title,
-             rating, reviews_count, students_count, last_updated,
-             price, original_price, discount_percent, image,
-             video_demo_title, video_demo_duration, video_demo_subtitle, video_url,
-             benefits, curriculum, bank_info, views_count, buyers_count, status,
-             resource_link, seo_title, seo_description, og_image
-      FROM courses 
-      WHERE deleted_at IS NULL
+      SELECT c.id, c.slug, c.category_id, c.category_name, c.tag_badge, c.type_badge, c.title,
+             c.rating, c.reviews_count, c.students_count, c.last_updated,
+             c.price, c.original_price, c.discount_percent, c.image,
+             c.video_demo_title, c.video_demo_duration, c.video_demo_subtitle, c.video_url,
+             c.benefits, c.curriculum, c.bank_info, c.views_count, c.is_featured, c.status,
+             c.resource_link, c.seo_title, c.seo_description, c.og_image,
+             COUNT(o.id) FILTER (WHERE o.status = 'PAID')::int AS buyers_count,
+             COALESCE(SUM(o.total_amount) FILTER (WHERE o.status = 'PAID'), 0)::int AS real_revenue,
+             COUNT(o.id)::int AS created_count
+      FROM courses c
+      LEFT JOIN orders o ON (c.id = o.course_id OR c.slug = o.course_slug)
+      WHERE c.deleted_at IS NULL
     `;
     const params: any[] = [];
 
     if (categoryId && categoryId !== 'all') {
       params.push(categoryId);
-      query += ` AND (category_id = $${params.length} OR slug = $${params.length})`;
+      query += ` AND (c.category_id = $${params.length} OR c.slug = $${params.length})`;
     }
 
-    query += ` ORDER BY views_count DESC, id ASC`;
+    query += ` GROUP BY c.id ORDER BY buyers_count DESC, real_revenue DESC, c.views_count DESC, c.id ASC`;
 
     const res = await this.db.query(query, params);
     return res.rows.map((row) => this.mapToDto(row));
@@ -99,19 +108,24 @@ export class CoursesService {
     const curriculum = SecurityUtil.sanitizePayload(parsedCurriculum);
     const bankInfo = data.bankInfo || { bankName: 'MBBANK', accountName: 'HA VAN MANH', accountNumber: '0399046519', orderCodePrefix: 'BL' };
 
+    const isFeatured = Boolean(data.isFeatured ?? data.is_featured ?? false);
+    if (isFeatured) {
+      await this.db.query(`UPDATE courses SET is_featured = false`);
+    }
+
     const query = `
       INSERT INTO courses (
         id, slug, category_id, category_name, tag_badge, type_badge, title,
         rating, reviews_count, students_count, last_updated,
         price, original_price, discount_percent, image, video_url,
         benefits, curriculum, bank_info, resource_link, status,
-        seo_title, seo_description, og_image, views_count, buyers_count, created_at
+        seo_title, seo_description, og_image, is_featured, views_count, buyers_count, created_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
         5.0, '1.2k đánh giá', '100+ học viên đã học', 'Cập nhật 2026',
         $8, $9, $10, $11, $12,
         $13, $14, $15, $16, $17,
-        $18, $19, $20, 0, 0, NOW()
+        $18, $19, $20, $21, 0, 0, NOW()
       )
       RETURNING *
     `;
@@ -120,7 +134,7 @@ export class CoursesService {
       id, slug, categoryId, categoryName, tagBadge, typeBadge, title,
       price, originalPrice, discountPercent, image, videoUrl,
       JSON.stringify(benefits), JSON.stringify(curriculum), JSON.stringify(bankInfo), resourceLink, status,
-      seoTitle, seoDescription, ogImage,
+      seoTitle, seoDescription, ogImage, isFeatured,
     ]);
 
     return this.mapToDto(res.rows[0]);
@@ -167,6 +181,15 @@ export class CoursesService {
     const parsedCurriculum = data.curriculum ? (typeof data.curriculum === 'string' ? JSON.parse(data.curriculum) : data.curriculum) : current.curriculum;
     const curriculum = SecurityUtil.sanitizePayload(parsedCurriculum);
 
+    const isFeaturedProvided = data.isFeatured !== undefined || data.is_featured !== undefined;
+    const isFeatured = isFeaturedProvided
+      ? Boolean(data.isFeatured !== undefined ? data.isFeatured : data.is_featured)
+      : Boolean(current.is_featured);
+
+    if (isFeaturedProvided && isFeatured) {
+      await this.db.query(`UPDATE courses SET is_featured = false WHERE id != $1`, [targetId]);
+    }
+
     const query = `
       UPDATE courses
       SET title = $1,
@@ -186,8 +209,9 @@ export class CoursesService {
           seo_description = $15,
           og_image = $16,
           benefits = $17,
-          curriculum = $18
-      WHERE id = $19
+          curriculum = $18,
+          is_featured = $19
+      WHERE id = $20
       RETURNING *
     `;
 
@@ -195,10 +219,32 @@ export class CoursesService {
       title, slug, categoryId, categoryName, tagBadge, typeBadge,
       price, originalPrice, discountPercent, image, videoUrl,
       resourceLink, status, seoTitle, seoDescription, ogImage,
-      JSON.stringify(benefits), JSON.stringify(curriculum), targetId,
+      JSON.stringify(benefits), JSON.stringify(curriculum), isFeatured, targetId,
     ]);
 
     return this.mapToDto(res.rows[0]);
+  }
+
+  // Đặt một khóa học làm khóa nổi bật duy nhất (hoặc hủy nổi bật nếu bấm lại)
+  async setFeatured(id: string) {
+    const existing = await this.db.query(
+      `SELECT id, slug, title, is_featured FROM courses WHERE (id = $1 OR slug = $1) AND deleted_at IS NULL`,
+      [id],
+    );
+    if (existing.rows.length === 0) {
+      throw new NotFoundException(`Khóa học không tồn tại (ID/Slug: ${id})`);
+    }
+    const targetId = existing.rows[0].id;
+    const currentlyFeatured = Boolean(existing.rows[0].is_featured);
+
+    if (currentlyFeatured) {
+      await this.db.query(`UPDATE courses SET is_featured = false WHERE id = $1`, [targetId]);
+    } else {
+      await this.db.query(`UPDATE courses SET is_featured = false`);
+      await this.db.query(`UPDATE courses SET is_featured = true WHERE id = $1`, [targetId]);
+    }
+
+    return this.getBySlug(targetId);
   }
 
   // Xóa chỉ khóa học này (Soft delete, tuyệt đối KHÔNG đụng đến bảng categories)
@@ -218,6 +264,52 @@ export class CoursesService {
     };
   }
 
+  // Ghi nhận lượt xem trang thực tế của khóa học (chống spam trùng IP trong 5 phút)
+  async trackView(slugOrId: string, ip: string, userAgent: string) {
+    const existing = await this.db.query(
+      `SELECT id, slug, views_count FROM courses WHERE (id = $1 OR slug = $1) AND deleted_at IS NULL`,
+      [slugOrId],
+    );
+    if (existing.rows.length === 0) {
+      return { success: false, message: 'Course not found' };
+    }
+    const course = existing.rows[0];
+
+    // Chống spam: Kiểm tra xem cùng IP này đã xem khóa học này trong vòng 5 phút chưa
+    const recent = await this.db.query(
+      `SELECT id FROM course_views 
+       WHERE course_id = $1 AND ip_address = $2 AND created_at > NOW() - INTERVAL '5 minutes'
+       LIMIT 1`,
+      [course.id, ip],
+    );
+
+    if (recent.rows.length === 0) {
+      // Ghi log lượt xem thực tế
+      await this.db.query(
+        `INSERT INTO course_views (course_id, course_slug, ip_address, user_agent, created_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [course.id, course.slug, ip, userAgent],
+      );
+
+      // Tăng số lượt xem trong bảng courses
+      await this.db.query(
+        `UPDATE courses SET views_count = views_count + 1 WHERE id = $1`,
+        [course.id],
+      );
+    }
+
+    const countRes = await this.db.query(
+      `SELECT views_count FROM courses WHERE id = $1`,
+      [course.id],
+    );
+
+    return { 
+      success: true, 
+      courseId: course.id, 
+      viewsCount: countRes.rows[0]?.views_count || 0 
+    };
+  }
+
   // Lấy chi tiết nội bộ bao gồm resource_link
   async getInternalById(id: string) {
     const res = await this.db.query(
@@ -231,7 +323,7 @@ export class CoursesService {
   }
 
   private mapToDto(row: any) {
-    const isFeatured = (row.views_count && row.views_count >= 1400) || row.id === 'course-1';
+    const isFeatured = Boolean(row.is_featured);
     return {
       id: row.id,
       slug: row.slug,
@@ -245,7 +337,9 @@ export class CoursesService {
       reviewsCount: row.reviews_count,
       studentsCount: row.students_count,
       viewsCount: row.views_count ? parseInt(row.views_count, 10) : 0,
-      buyersCount: row.buyers_count ? parseInt(row.buyers_count, 10) : 0,
+      buyersCount: row.buyers_count !== undefined ? parseInt(row.buyers_count, 10) : 0,
+      realRevenue: row.real_revenue !== undefined ? parseInt(row.real_revenue, 10) : 0,
+      createdCount: row.created_count !== undefined ? parseInt(row.created_count, 10) : 0,
       status: row.status || 'PUBLISHED',
       lastUpdated: row.last_updated,
       price: row.price,

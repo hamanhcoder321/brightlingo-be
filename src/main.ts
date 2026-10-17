@@ -56,10 +56,10 @@ async function bootstrap() {
     next();
   });
 
-  // 4. BẢO VỆ Ô NHẬP INPUT: Global ValidationPipe (Lọc sạch thuộc tính lạ, validate dữ liệu đầu vào)
+  // 4. BẢO VỆ Ô NHẬP INPUT: Global ValidationPipe (Validate dữ liệu đầu vào & type casting)
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // Tự động loại bỏ mọi trường dữ liệu không khai báo trong DTO
+      whitelist: false, // Tránh tự động strip các thuộc tính hợp lệ của request
       transform: true, // Tự động chuyển đổi kiểu dữ liệu an toàn
       transformOptions: { enableImplicitConversion: true },
     }),

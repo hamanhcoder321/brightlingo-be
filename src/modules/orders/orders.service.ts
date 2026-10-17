@@ -20,7 +20,7 @@ export class OrdersService {
       `SELECT id, slug, title, price, original_price 
        FROM courses 
        WHERE (id = $1 OR slug = $2) AND status = 'PUBLISHED' AND deleted_at IS NULL`,
-      [dto.courseId, dto.courseSlug],
+      [dto.courseId || null, dto.courseSlug || null],
     );
 
     if (courseRes.rows.length === 0) {
@@ -162,6 +162,88 @@ export class OrdersService {
         row.status === 'PAID'
           ? 'Giao dịch thanh toán thành công!'
           : 'Đang chờ xác nhận chuyển khoản từ ngân hàng...',
+    };
+  }
+
+  // Lấy danh sách toàn bộ đơn hàng cho CMS Admin (Thống kê & Đối soát)
+  async findAll(params?: { status?: string; search?: string }) {
+    let query = `
+      SELECT o.id, o.order_code, o.customer_name, o.customer_email, o.customer_phone,
+             o.course_id, o.course_title, o.course_slug, o.original_price, o.unit_price,
+             o.discount_amount, o.total_amount as final_amount, o.status, o.ref,
+             o.utm_source, o.utm_campaign, o.created_at, o.updated_at, o.paid_at,
+             COALESCE(el.resend_count, 0)::int as resend_count
+      FROM orders o
+      LEFT JOIN (
+        SELECT order_id, MAX(resend_count) as resend_count
+        FROM email_logs
+        GROUP BY order_id
+      ) el ON o.id = el.order_id
+      WHERE 1=1
+    `;
+    const queryParams: any[] = [];
+
+    if (params?.status) {
+      queryParams.push(params.status.toUpperCase());
+      query += ` AND UPPER(o.status) = $${queryParams.length}`;
+    }
+
+    if (params?.search) {
+      queryParams.push(`%${params.search}%`);
+      query += ` AND (o.order_code ILIKE $${queryParams.length} OR o.customer_name ILIKE $${queryParams.length} OR o.customer_email ILIKE $${queryParams.length} OR o.customer_phone ILIKE $${queryParams.length})`;
+    }
+
+    query += ` ORDER BY o.created_at DESC`;
+
+    const res = await this.db.query(query, queryParams);
+    return {
+      items: res.rows.map((r) => ({
+        ...r,
+        course_price: r.original_price || r.unit_price,
+        status:
+          r.status === 'PAID'
+            ? 'Paid'
+            : r.status === 'PENDING'
+              ? 'Pending'
+              : r.status === 'CANCELLED'
+                ? 'Cancelled'
+                : r.status,
+      })),
+      total: res.rows.length,
+    };
+  }
+
+  // Chi tiết 1 đơn hàng theo ID cho CMS Admin
+  async findOne(id: string) {
+    const res = await this.db.query(
+      `SELECT o.*, o.total_amount as final_amount,
+              COALESCE(el.resend_count, 0)::int as resend_count
+       FROM orders o
+       LEFT JOIN (
+         SELECT order_id, MAX(resend_count) as resend_count
+         FROM email_logs
+         GROUP BY order_id
+       ) el ON o.id = el.order_id
+       WHERE o.id = $1 OR o.order_code = $1`,
+      [id],
+    );
+
+    if (res.rows.length === 0) {
+      throw new NotFoundException(`Không tìm thấy đơn hàng: ${id}`);
+    }
+
+    const r = res.rows[0];
+    return {
+      ...r,
+      course_price: r.original_price || r.unit_price,
+      status:
+        r.status === 'PAID'
+          ? 'Paid'
+          : r.status === 'PENDING'
+            ? 'Pending'
+            : r.status === 'CANCELLED'
+              ? 'Cancelled'
+              : r.status,
     };
   }
 }

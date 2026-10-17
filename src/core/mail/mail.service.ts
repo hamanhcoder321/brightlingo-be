@@ -22,8 +22,11 @@ export class MailService {
 
     // Khi có Resend API Key: thực hiện gọi Resend REST API
     if (apiKey) {
+      const recipient = options.to;
+      const isTestDomain = from.includes('onboarding@resend.dev');
+
       try {
-        const response = await fetch('https://api.resend.com/emails', {
+        let response = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -31,14 +34,40 @@ export class MailService {
           },
           body: JSON.stringify({
             from,
-            to: [options.to],
+            to: [recipient],
             subject: options.subject,
             html: options.html,
             text: options.text,
           }),
         });
 
-        const data: any = await response.json();
+        let data: any = await response.json();
+
+        // Xử lý thông minh cho Resend Sandbox (onboarding@resend.dev):
+        // Nếu gửi tới địa chỉ khác bị giới hạn của Resend Sandbox, tự động chuyển tiếp tới email chủ tài khoản vanmanh8930@gmail.com để thử nghiệm
+        if (!response.ok && isTestDomain && data.message?.includes('You can only send testing emails')) {
+          const testEmail = 'vanmanh8930@gmail.com';
+          this.logger.warn(
+            `[MailService] Resend Sandbox giới hạn gửi: Tự động chuyển tiếp email tài liệu tới ${testEmail} (Email người mua: ${recipient})`,
+          );
+
+          response = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              from,
+              to: [testEmail],
+              subject: `[Thử nghiệm - Người nhận: ${recipient}] ${options.subject}`,
+              html: options.html,
+              text: options.text,
+            }),
+          });
+          data = await response.json();
+        }
+
         if (!response.ok) {
           throw new Error(data.message || 'Failed to send email via Resend API');
         }
