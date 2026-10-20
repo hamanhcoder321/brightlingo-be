@@ -29,8 +29,8 @@ export class AdminService {
     const leadsRes = await this.db.query(
       `SELECT 
         COUNT(*)::int AS total_leads,
-        COUNT(*) FILTER (WHERE status = 'NEW')::int AS new_leads
-       FROM consultation_leads`,
+        COUNT(*) FILTER (WHERE UPPER(status) = 'NEW')::int AS new_leads
+       FROM consultation_leads WHERE deleted_at IS NULL`,
     );
 
     // 4. Danh sách đơn hàng thực tế gần nhất

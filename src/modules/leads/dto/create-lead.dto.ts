@@ -23,7 +23,23 @@ export class CreateLeadDto {
 
   @IsString()
   @IsOptional()
+  courseInterest?: string;
+
+  @IsString()
+  @IsOptional()
+  courseTitle?: string;
+
+  @IsString()
+  @IsOptional()
   message?: string;
+
+  @IsString()
+  @IsOptional()
+  note?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 
   @IsString()
   @IsOptional()
@@ -31,13 +47,25 @@ export class CreateLeadDto {
 
   @IsString()
   @IsOptional()
-  utmSource?: string;
+  source?: string; // Nguồn trang điền form: "Trang chủ", "Trang đăng ký", "Trang khóa học"
 
   @IsString()
   @IsOptional()
-  utmMedium?: string;
+  landingUrl?: string; // URL đầy đủ của trang người dùng gửi thông tin
 
   @IsString()
   @IsOptional()
-  utmCampaign?: string;
+  referrerUrl?: string; // Nguồn giới thiệu (HTTP Referer)
+
+  @IsString()
+  @IsOptional()
+  utmSource?: string; // Marketing source (facebook, google, tiktok, zalo, youtube...)
+
+  @IsString()
+  @IsOptional()
+  utmMedium?: string; // cpc, banner, bio, organic, website_form...
+
+  @IsString()
+  @IsOptional()
+  utmCampaign?: string; // Tên chiến dịch marketing
 }
