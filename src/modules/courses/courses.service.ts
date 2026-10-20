@@ -42,6 +42,29 @@ export class CoursesService {
     );
 
     if (res.rows.length === 0) {
+      // Kiểm tra bảng chuyển hướng 301 (nếu đã đổi slug trước đó)
+      try {
+        const redRes = await this.db.query(`SELECT value FROM settings WHERE key = 'redirects_301'`);
+        if (redRes.rows[0]?.value) {
+          const rules = JSON.parse(redRes.rows[0].value);
+          const matched = Array.isArray(rules)
+            ? rules.find(
+                (r: any) =>
+                  r.from === `/khoa-hoc/${slug}` ||
+                  r.from === slug ||
+                  r.from?.replace(/^\/khoa-hoc\//, '') === slug,
+              )
+            : null;
+          if (matched && matched.to) {
+            const targetSlug = matched.to.replace(/^\/khoa-hoc\//, '').replace(/^\//, '');
+            if (targetSlug && targetSlug !== slug) {
+              return this.getBySlug(targetSlug);
+            }
+          }
+        }
+      } catch {
+        // Ignore redirect parse error
+      }
       throw new NotFoundException(`Không tìm thấy khóa học với ID/Slug: ${slug}`);
     }
 
@@ -221,6 +244,34 @@ export class CoursesService {
       resourceLink, status, seoTitle, seoDescription, ogImage,
       JSON.stringify(benefits), JSON.stringify(curriculum), isFeatured, targetId,
     ]);
+
+    // Tự động thêm chuyển hướng 301 nếu đổi slug
+    if (current.slug && slug && current.slug !== slug) {
+      try {
+        const redRes = await this.db.query(`SELECT value FROM settings WHERE key = 'redirects_301'`);
+        let rules: any[] = [];
+        if (redRes.rows[0]?.value) {
+          rules = JSON.parse(redRes.rows[0].value);
+        }
+        const fromPath = `/khoa-hoc/${current.slug}`;
+        const toPath = `/khoa-hoc/${slug}`;
+        const filtered = Array.isArray(rules) ? rules.filter((r) => r.from !== fromPath) : [];
+        filtered.unshift({
+          id: `red-${Date.now()}`,
+          from: fromPath,
+          to: toPath,
+          note: 'Tự tạo khi đổi slug',
+        });
+        await this.db.query(
+          `INSERT INTO settings (group_name, key, value, updated_at)
+           VALUES ('SEO', 'redirects_301', $1, NOW())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+          [JSON.stringify(filtered)],
+        );
+      } catch {
+        // Ignore error
+      }
+    }
 
     return this.mapToDto(res.rows[0]);
   }
