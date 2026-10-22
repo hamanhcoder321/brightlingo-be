@@ -83,7 +83,7 @@ export class PaymentsService implements OnModuleInit {
       return {
         orderCode: String(paymentResponse.orderCode),
         amount: paymentResponse.amount,
-        bankName: 'MBBANK',
+        bankName: (await this.getBankConfigFromDb()).bankName,
         accountName: paymentResponse.accountName,
         accountNumber: paymentResponse.accountNumber,
         qrCodeUrl,
@@ -288,11 +288,28 @@ export class PaymentsService implements OnModuleInit {
     return result;
   }
 
+  private async getBankConfigFromDb() {
+    let bankName = this.configService.get<string>('payment.bankName', 'MBBANK');
+    let accountNumber = this.configService.get<string>('payment.accountNumber', '0399046519');
+    let accountName = this.configService.get<string>('payment.accountName', 'HA VAN MANH');
+    try {
+      const res = await this.db.query(
+        `SELECT key, value FROM settings WHERE key IN ('bank_name', 'account_number', 'account_name')`,
+      );
+      for (const r of res.rows) {
+        if (r.key === 'bank_name' && r.value) bankName = r.value;
+        if (r.key === 'account_number' && r.value) accountNumber = r.value;
+        if (r.key === 'account_name' && r.value) accountName = r.value;
+      }
+    } catch {
+      // Fallback to env config
+    }
+    return { bankName, accountNumber, accountName };
+  }
+
   // Fallback tĩnh khi chưa có internet hoặc PayOS gặp sự cố tạm thời
-  private createFallbackPaymentInfo(options: CreatePaymentLinkOptions) {
-    const bankName = this.configService.get<string>('payment.bankName', 'MBBANK');
-    const accountNumber = this.configService.get<string>('payment.accountNumber', '0399046519');
-    const accountName = this.configService.get<string>('payment.accountName', 'HA VAN MANH');
+  private async createFallbackPaymentInfo(options: CreatePaymentLinkOptions) {
+    const { bankName, accountNumber, accountName } = await this.getBankConfigFromDb();
     const orderCodeStr = String(options.orderCode);
 
     const qrCodeUrl = `https://img.vietqr.io/image/${bankName}-${accountNumber}-compact2.png?amount=${options.amount}&addInfo=BL${orderCodeStr}&accountName=${encodeURIComponent(

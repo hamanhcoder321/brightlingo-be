@@ -16,12 +16,12 @@ export class EmailService {
 
   // Gửi email tài liệu tự động sau khi Paid (BR-05) hoặc Resend từ CMS (BR-06)
   async sendDeliveryEmail(orderId: string, isResend = false, adminId?: number, adminName?: string) {
-    // 1. Kiểm tra trạng thái đơn hàng (BR-05: Chỉ Paid mới được gửi)
+    // 1. Kiểm tra trạng thái đơn hàng (BR-05: Chỉ Paid mới được gửi, hỗ trợ tìm theo cả id hoặc order_code)
     const orderRes = await this.db.query(
       `SELECT o.*, c.resource_link 
        FROM orders o
        LEFT JOIN courses c ON (o.course_id = c.id OR o.course_slug = c.slug)
-       WHERE o.id = $1`,
+       WHERE o.id = $1 OR o.order_code = $1`,
       [orderId],
     );
 
@@ -114,11 +114,18 @@ export class EmailService {
 
     const replacements: Record<string, string> = {
       '{{customer_name}}': order.customer_name || 'Học viên',
+      '{ho_ten}': order.customer_name || 'Học viên',
       '{{course_name}}': order.course_title || 'Khóa học BrightLingo',
+      '{{course_title}}': order.course_title || 'Khóa học BrightLingo',
+      '{ten_khoa_hoc}': order.course_title || 'Khóa học BrightLingo',
       '{{order_code}}': order.order_code,
+      '{ma_don}': order.order_code,
       '{{amount_paid}}': amountPaid,
+      '{so_tien}': amountPaid,
       '{{payment_time}}': paymentTime,
+      '{thoi_gian}': paymentTime,
       '{{resource_link}}': resourceLink, // Render link thật tại backend (BR-11)
+      '{link_drive}': resourceLink,
       '{{support_email}}': supportEmail,
       '{{support_phone}}': supportPhone,
       '{{site_name}}': siteName,
@@ -201,6 +208,105 @@ export class EmailService {
       error: lastError,
       providerMessageId: providerMsgId,
       resendCount: currentResendCount,
+    };
+  }
+
+  private mapTemplateRow(row: any) {
+    return {
+      id: String(row.id),
+      name: row.name,
+      title: row.name,
+      code: row.code,
+      template_key: row.code,
+      subject: row.subject,
+      body_html: row.body_html,
+      body_text: row.body_text || '',
+      is_active: Boolean(row.is_active),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  async getTemplates() {
+    const res = await this.db.query(`SELECT * FROM email_templates ORDER BY id ASC`);
+    return res.rows.map((r) => this.mapTemplateRow(r));
+  }
+
+  async getTemplateById(id: string) {
+    const isNum = !isNaN(Number(id));
+    const res = isNum
+      ? await this.db.query(`SELECT * FROM email_templates WHERE id = $1 LIMIT 1`, [Number(id)])
+      : await this.db.query(
+          `SELECT * FROM email_templates WHERE code = $1 OR code = 'ORDER_PAID_RESOURCE_DELIVERY' ORDER BY id ASC LIMIT 1`,
+          [id],
+        );
+    if (res.rows.length === 0) {
+      throw new NotFoundException(`Không tìm thấy mẫu email: ${id}`);
+    }
+    return this.mapTemplateRow(res.rows[0]);
+  }
+
+  async updateTemplate(id: string, data: { title?: string; name?: string; subject?: string; body_html?: string; body_text?: string; is_active?: boolean }) {
+    const existing = await this.getTemplateById(id);
+    const nextName = data.title || data.name || existing.name;
+    const nextSubject = data.subject ?? existing.subject;
+    const nextHtml = data.body_html ?? existing.body_html;
+    const nextText = data.body_text ?? existing.body_text;
+    const nextActive = data.is_active !== undefined ? data.is_active : existing.is_active;
+
+    const res = await this.db.query(
+      `UPDATE email_templates
+       SET name = $1, subject = $2, body_html = $3, body_text = $4, is_active = $5, updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [nextName, nextSubject, nextHtml, nextText, nextActive, Number(existing.id)],
+    );
+    return this.mapTemplateRow(res.rows[0]);
+  }
+
+  async sendTestEmail(id: string, targetEmail: string) {
+    if (!targetEmail) {
+      throw new BadRequestException('Vui lòng nhập địa chỉ email nhận thử nghiệm');
+    }
+    const tpl = await this.getTemplateById(id);
+    const replacements: Record<string, string> = {
+      '{{customer_name}}': 'Học viên Thử Nghiệm',
+      '{ho_ten}': 'Học viên Thử Nghiệm',
+      '{{course_name}}': 'Khóa học HSK 1-3 Toàn Diện (Bản Test)',
+      '{{course_title}}': 'Khóa học HSK 1-3 Toàn Diện (Bản Test)',
+      '{ten_khoa_hoc}': 'Khóa học HSK 1-3 Toàn Diện (Bản Test)',
+      '{{order_code}}': 'BL-TEST-9999',
+      '{ma_don}': 'BL-TEST-9999',
+      '{{amount_paid}}': '799.000',
+      '{so_tien}': '799.000',
+      '{{payment_time}}': new Date().toLocaleString('vi-VN'),
+      '{thoi_gian}': new Date().toLocaleString('vi-VN'),
+      '{{resource_link}}': 'https://drive.google.com/drive/folders/test-brightlingo-demo',
+      '{link_drive}': 'https://drive.google.com/drive/folders/test-brightlingo-demo',
+      '{{support_email}}': this.configService.get<string>('mail.supportEmail', 'support@brightlingo.vn'),
+      '{{support_phone}}': this.configService.get<string>('mail.supportPhone', '1900 8989'),
+      '{{site_name}}': this.configService.get<string>('app.name', 'BrightLingo'),
+    };
+
+    let subject = `[TEST] ${tpl.subject}`;
+    let html = tpl.body_html;
+    let text = tpl.body_text || '';
+    for (const [k, v] of Object.entries(replacements)) {
+      subject = subject.replaceAll(k, v);
+      html = html.replaceAll(k, v);
+      text = text.replaceAll(k, v);
+    }
+
+    await this.mail.sendMail({
+      to: targetEmail,
+      subject,
+      html,
+      text,
+    });
+
+    return {
+      success: true,
+      message: `Đã gửi email thử nghiệm tới ${targetEmail}`,
     };
   }
 }

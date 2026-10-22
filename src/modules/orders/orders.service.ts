@@ -199,6 +199,7 @@ export class OrdersService {
     return {
       items: res.rows.map((r) => ({
         ...r,
+        customer_phone: r.customer_phone || '',
         course_price: r.original_price || r.unit_price,
         status:
           r.status === 'PAID'
@@ -235,6 +236,7 @@ export class OrdersService {
     const r = res.rows[0];
     return {
       ...r,
+      customer_phone: r.customer_phone || '',
       course_price: r.original_price || r.unit_price,
       status:
         r.status === 'PAID'

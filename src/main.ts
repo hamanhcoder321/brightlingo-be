@@ -76,10 +76,21 @@ async function bootstrap() {
     'http://127.0.0.1:5173',
   ]);
 
-  // 5. CẤU HÌNH CORS CHẶT CHẼ
+  // 5. CẤU HÌNH CORS CHẶT CHẼ (Hỗ trợ Localhost, Vercel domains và CORS_ORIGINS)
   app.enableCors({
-    origin: corsOrigins,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        corsOrigins.includes(origin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+        /\.vercel\.app$/.test(origin)
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
 

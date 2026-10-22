@@ -38,4 +38,57 @@ export class AuditService {
       this.logger.error('Failed to write audit log:', err);
     }
   }
+
+  // Lấy danh sách lịch sử thao tác của Admin cho CMS
+  async getLogs(params?: any) {
+    const page = Math.max(1, parseInt(params?.page || '1', 10));
+    const limit = Math.max(1, Math.min(100, parseInt(params?.limit || '20', 10)));
+    const offset = (page - 1) * limit;
+
+    let query = `SELECT * FROM audit_logs`;
+    let countQuery = `SELECT COUNT(*) as total FROM audit_logs`;
+    const conditions: string[] = [];
+    const values: any[] = [];
+
+    if (params?.action) {
+      values.push(params.action);
+      conditions.push(`action = $${values.length}`);
+    }
+    if (params?.entity_type || params?.targetEntity) {
+      values.push(params.entity_type || params.targetEntity);
+      conditions.push(`target_entity = $${values.length}`);
+    }
+
+    if (conditions.length > 0) {
+      const whereClause = ` WHERE ` + conditions.join(' AND ');
+      query += whereClause;
+      countQuery += whereClause;
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+
+    const [logsRes, countRes] = await Promise.all([
+      this.db.query(query, [...values, limit, offset]),
+      this.db.query(countQuery, values),
+    ]);
+
+    const total = parseInt(countRes.rows[0]?.total || '0', 10);
+    const items = logsRes.rows.map((row) => ({
+      id: String(row.id),
+      action: row.action,
+      entity_type: row.target_entity,
+      entity_id: row.target_id,
+      actor_name: row.admin_name || 'Quản trị viên',
+      actor_email: 'admin@brightlingo.vn',
+      metadata: typeof row.details === 'string' ? JSON.parse(row.details) : row.details || {},
+      ip_address: row.ip_address,
+      created_at: row.created_at,
+      updated_at: row.created_at,
+    }));
+
+    return {
+      items,
+      total,
+    };
+  }
 }
