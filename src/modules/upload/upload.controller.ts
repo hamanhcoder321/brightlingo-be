@@ -75,7 +75,11 @@ export class UploadController {
       throw new BadRequestException('Không tìm thấy tệp video được tải lên.');
     }
     const host = req.get('host') || 'localhost:4000';
-    const protocol = req.protocol || 'http';
+    const isHttps =
+      req.get('x-forwarded-proto') === 'https' ||
+      req.protocol === 'https' ||
+      (!host.startsWith('localhost') && !host.startsWith('127.0.0.1'));
+    const protocol = isHttps ? 'https' : 'http';
     const fileUrl = `${protocol}://${host}/uploads/videos/${file.filename}`;
 
     return {
@@ -126,7 +130,11 @@ export class UploadController {
     }
 
     const host = req.get('host') || 'localhost:4000';
-    const protocol = req.protocol || 'http';
+    const isHttps =
+      req.get('x-forwarded-proto') === 'https' ||
+      req.protocol === 'https' ||
+      (!host.startsWith('localhost') && !host.startsWith('127.0.0.1'));
+    const protocol = isHttps ? 'https' : 'http';
     const fileUrl = `${protocol}://${host}/uploads/images/${file.filename}`;
 
     return {

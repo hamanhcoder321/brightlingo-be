@@ -10,6 +10,9 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
+  // Trust reverse proxy (Render, Cloudflare, etc.) to detect https and client IP
+  (app.getHttpAdapter().getInstance() as any).set('trust proxy', 1);
+
   // 1. BẢO VỆ HTTP HEADERS BẰNG HELMET (Chống MIME Sniffing, Clickjacking, XSS)
   app.use(
     helmet({
