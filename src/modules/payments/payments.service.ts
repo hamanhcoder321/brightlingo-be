@@ -278,14 +278,25 @@ export class PaymentsService implements OnModuleInit {
     this.paymentLogger.logExpired(orderCode, details);
   }
 
-  // 3. Đăng ký Webhook URL với PayOS (Tùy chọn tiện ích)
-  async confirmWebhook(webhookUrl: string) {
+  // 3. Đăng ký Webhook URL với PayOS (Tùy chọn tiện ích, tự động chuẩn hóa đuôi)
+  async confirmWebhook(webhookUrl?: string) {
     if (!this.payos) {
       throw new BadRequestException('PayOS service is not initialized');
     }
-    const result = await this.payos.webhooks.confirm(webhookUrl);
-    this.logger.log(`PayOS webhook confirmed for URL: ${webhookUrl}`);
-    return result;
+    let targetUrl = (webhookUrl || '').trim().replace(/\/+$/, '');
+    if (!targetUrl) {
+      targetUrl = 'https://brightlingo-be.onrender.com/api/webhooks/payos';
+    } else if (targetUrl.endsWith('/webhooks/payos')) {
+      if (!targetUrl.endsWith('/api/webhooks/payos')) {
+        targetUrl = targetUrl.replace(/\/webhooks\/payos$/, '/api/webhooks/payos');
+      }
+    } else if (!targetUrl.endsWith('/api/webhooks/payos')) {
+      targetUrl = targetUrl + '/api/webhooks/payos';
+    }
+
+    const result = await this.payos.webhooks.confirm(targetUrl);
+    this.logger.log(`PayOS webhook confirmed for URL: ${targetUrl}`);
+    return { ...result, confirmedWebhookUrl: targetUrl };
   }
 
   private async getBankConfigFromDb() {
