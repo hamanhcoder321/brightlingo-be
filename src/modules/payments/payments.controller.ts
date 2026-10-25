@@ -9,8 +9,8 @@ export class PaymentsController {
   // Webhook chính thức nhận từ PayOS khi khách chuyển khoản thành công
   @Post('payos')
   @HttpCode(HttpStatus.OK)
-  async handlePayOSWebhook(@Body() payload: any) {
-    return this.paymentsService.handlePayOSWebhook(payload);
+  async handlePayOSWebhook(@Body() webhookPayload: any) {
+    return this.paymentsService.handlePayOSWebhook(webhookPayload);
   }
 
   // Đăng ký Webhook URL với PayOS (Tự động bù đuôi nếu thiếu)
@@ -24,19 +24,20 @@ export class PaymentsController {
   @Post('payos/switch-env')
   @HttpCode(HttpStatus.OK)
   async switchPayOSEnvironment(
-    @Body() body: { target: 'local' | 'prod' | 'production'; url?: string },
+    @Body() switchEnvDto: { target: 'local' | 'prod' | 'production'; url?: string },
   ) {
-    const isProd = body.target === 'prod' || body.target === 'production';
-    const targetUrl = isProd
+    const isTargetProduction =
+      switchEnvDto.target === 'prod' || switchEnvDto.target === 'production';
+    const resolvedWebhookUrl = isTargetProduction
       ? 'https://brightlingo-be.onrender.com/api/webhooks/payos'
-      : (body.url || '');
-    return this.paymentsService.confirmWebhook(targetUrl);
+      : (switchEnvDto.url || '');
+    return this.paymentsService.confirmWebhook(resolvedWebhookUrl);
   }
 
   // Webhook dự phòng từ BankNoti
   @Post('banknoti')
   @HttpCode(HttpStatus.OK)
-  async handleBankNotiWebhook(@Body() payload: BankNotiWebhookDto) {
-    return this.paymentsService.handleBankNotiWebhook(payload);
+  async handleBankNotiWebhook(@Body() bankNotiPayload: BankNotiWebhookDto) {
+    return this.paymentsService.handleBankNotiWebhook(bankNotiPayload);
   }
 }
