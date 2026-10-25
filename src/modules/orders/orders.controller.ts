@@ -6,13 +6,15 @@ import { CreateOrderDto } from './dto/create-order.dto';
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  // Tạo đơn hàng mới và khởi tạo liên kết thanh toán VietQR
   @Post()
-  async create(@Body() dto: CreateOrderDto) {
-    return this.ordersService.create(dto);
+  async createOrder(@Body() createOrderDto: CreateOrderDto) {
+    return this.ordersService.create(createOrderDto);
   }
 
+  // Khách hàng kiểm tra trạng thái thanh toán đơn hàng (Polling ở Bước 2)
   @Get(':id/status')
-  async getStatus(@Param('id') id: string) {
-    return this.ordersService.getStatus(id);
+  async getOrderPaymentStatus(@Param('id') orderId: string) {
+    return this.ordersService.getStatus(orderId);
   }
 }

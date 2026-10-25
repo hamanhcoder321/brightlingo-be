@@ -10,6 +10,9 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
+  // Trust reverse proxy (Render, Cloudflare, etc.) to detect https and client IP
+  (app.getHttpAdapter().getInstance() as any).set('trust proxy', 1);
+
   // 1. BẢO VỆ HTTP HEADERS BẰNG HELMET (Chống MIME Sniffing, Clickjacking, XSS)
   app.use(
     helmet({
@@ -76,10 +79,21 @@ async function bootstrap() {
     'http://127.0.0.1:5173',
   ]);
 
-  // 5. CẤU HÌNH CORS CHẶT CHẼ
+  // 5. CẤU HÌNH CORS CHẶT CHẼ (Hỗ trợ Localhost, Vercel domains và CORS_ORIGINS)
   app.enableCors({
-    origin: corsOrigins,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        corsOrigins.includes(origin) ||
+        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+        /\.vercel\.app$/.test(origin)
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
 

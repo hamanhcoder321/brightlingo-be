@@ -6,7 +6,16 @@ export class AdminService {
   constructor(private readonly db: DatabaseService) {}
 
   // Lấy các chỉ số KPI tổng quan cho CMS Dashboard theo Mục 12.1 BA
-  async getDashboardSummary() {
+  async getDashboardSummary(period?: string) {
+    let dateCondition = '';
+    if (period === '7days') {
+      dateCondition = `WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'`;
+    } else if (period === '30days') {
+      dateCondition = `WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'`;
+    } else if (period === 'month') {
+      dateCondition = `WHERE date_trunc('month', created_at) = date_trunc('month', CURRENT_DATE)`;
+    }
+
     // 1. Số khóa học đang Published
     const coursesRes = await this.db.query(
       `SELECT COUNT(*)::int AS count FROM courses WHERE status = 'PUBLISHED' AND deleted_at IS NULL`,
@@ -22,7 +31,7 @@ export class AdminService {
         COUNT(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled_orders,
         COALESCE(SUM(total_amount) FILTER (WHERE status = 'PAID'), 0)::int AS total_revenue,
         COUNT(DISTINCT customer_email) FILTER (WHERE status = 'PAID')::int AS unique_customers
-       FROM orders`,
+       FROM orders ${dateCondition}`,
     );
 
     // 3. Thống kê yêu cầu tư vấn thực tế

@@ -1,9 +1,13 @@
-import { Controller, Get, Put, Post, Patch, Delete, Param, Query, Body } from '@nestjs/common';
+import { Controller, Get, Put, Post, Patch, Delete, Param, Query, Body, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { OrdersService } from '@/modules/orders/orders.service';
 import { LeadsService } from '@/modules/leads/leads.service';
 import { SettingsService } from '@/modules/settings/settings.service';
+import { AuditService } from '@/modules/audit/audit.service';
+import { EmailService } from '@/modules/email/email.service';
+import { AuthGuard } from '@/modules/auth/auth.guard';
 
+@UseGuards(AuthGuard)
 @Controller('api/admin')
 export class AdminController {
   constructor(
@@ -11,11 +15,19 @@ export class AdminController {
     private readonly ordersService: OrdersService,
     private readonly leadsService: LeadsService,
     private readonly settingsService: SettingsService,
+    private readonly auditService: AuditService,
+    private readonly emailService: EmailService,
   ) {}
 
   @Get('dashboard')
-  async getDashboardSummary() {
-    return this.adminService.getDashboardSummary();
+  async getDashboardSummary(@Query('period') period?: string) {
+    return this.adminService.getDashboardSummary(period);
+  }
+
+  // Lịch sử thao tác Audit Logs cho CMS
+  @Get('audit-logs')
+  async getAuditLogs(@Query() params: any) {
+    return this.auditService.getLogs(params);
   }
 
   // Danh sách toàn bộ đơn hàng thực tế cho CMS
@@ -73,5 +85,26 @@ export class AdminController {
   @Post('seo/regenerate-sitemap')
   async regenerateSitemap() {
     return this.settingsService.regenerateSitemap();
+  }
+
+  // Quản lý Mẫu Email tự động (BR-11)
+  @Get('email-templates')
+  async getEmailTemplates() {
+    return this.emailService.getTemplates();
+  }
+
+  @Get('email-templates/:id')
+  async getEmailTemplateById(@Param('id') id: string) {
+    return this.emailService.getTemplateById(id);
+  }
+
+  @Put('email-templates/:id')
+  async updateEmailTemplate(@Param('id') id: string, @Body() body: any) {
+    return this.emailService.updateTemplate(id, body);
+  }
+
+  @Post('email-templates/:id/test')
+  async sendTestEmailTemplate(@Param('id') id: string, @Body() body: { email: string }) {
+    return this.emailService.sendTestEmail(id, body.email);
   }
 }

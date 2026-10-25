@@ -4,6 +4,7 @@ import {
   UploadedFile,
   UseInterceptors,
   BadRequestException,
+  UseGuards,
   Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -13,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
 import { randomBytes } from 'crypto';
 import type { Request } from 'express';
 import { SecurityUtil } from '@/common/security/security.util';
+import { AuthGuard } from '@/modules/auth/auth.guard';
 
 const ALLOWED_VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov']);
 const ALLOWED_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif']);
@@ -49,6 +51,7 @@ const imageStorage = diskStorage({
   },
 });
 
+@UseGuards(AuthGuard)
 @Controller('api/upload')
 export class UploadController {
   @Post('video')
@@ -72,7 +75,11 @@ export class UploadController {
       throw new BadRequestException('Không tìm thấy tệp video được tải lên.');
     }
     const host = req.get('host') || 'localhost:4000';
-    const protocol = req.protocol || 'http';
+    const isHttps =
+      req.get('x-forwarded-proto') === 'https' ||
+      req.protocol === 'https' ||
+      (!host.startsWith('localhost') && !host.startsWith('127.0.0.1'));
+    const protocol = isHttps ? 'https' : 'http';
     const fileUrl = `${protocol}://${host}/uploads/videos/${file.filename}`;
 
     return {
@@ -123,7 +130,11 @@ export class UploadController {
     }
 
     const host = req.get('host') || 'localhost:4000';
-    const protocol = req.protocol || 'http';
+    const isHttps =
+      req.get('x-forwarded-proto') === 'https' ||
+      req.protocol === 'https' ||
+      (!host.startsWith('localhost') && !host.startsWith('127.0.0.1'));
+    const protocol = isHttps ? 'https' : 'http';
     const fileUrl = `${protocol}://${host}/uploads/images/${file.filename}`;
 
     return {

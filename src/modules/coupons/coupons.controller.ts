@@ -1,18 +1,18 @@
 import { Controller, Post, Body } from '@nestjs/common';
 import { CouponsService } from './coupons.service';
-
-export class ApplyCouponDto {
-  code: string;
-  courseId: string;
-  originalPrice: number;
-}
+import { ApplyCouponDto } from './dto/coupon.dto';
 
 @Controller('api/coupons')
 export class CouponsController {
   constructor(private readonly couponsService: CouponsService) {}
 
+  // Học viên áp dụng mã giảm giá khi thanh toán khóa học
   @Post('apply')
-  async apply(@Body() dto: ApplyCouponDto) {
-    return this.couponsService.applyCoupon(dto.code, dto.courseId, dto.originalPrice);
+  async applyCoupon(@Body() applyCouponDto: ApplyCouponDto) {
+    return this.couponsService.applyCoupon(
+      applyCouponDto.code,
+      applyCouponDto.courseId,
+      applyCouponDto.originalPrice,
+    );
   }
 }

@@ -83,7 +83,7 @@ export class PaymentsService implements OnModuleInit {
       return {
         orderCode: String(paymentResponse.orderCode),
         amount: paymentResponse.amount,
-        bankName: 'MBBANK',
+        bankName: (await this.getBankConfigFromDb()).bankName,
         accountName: paymentResponse.accountName,
         accountNumber: paymentResponse.accountNumber,
         qrCodeUrl,
@@ -150,7 +150,7 @@ export class PaymentsService implements OnModuleInit {
 
     // Bước 3: Tìm đơn hàng trong DB theo order_code
     const orderRes = await this.db.query(
-      `SELECT id, order_code, total_amount, status, customer_email, customer_name, customer_phone 
+      `SELECT id, order_code, total_amount, status, customer_email, customer_name, customer_phone, coupon_id 
        FROM orders 
        WHERE order_code = $1 OR order_code = $2`,
       [orderCodeStr, `BL-${orderCodeStr}`],
@@ -219,6 +219,14 @@ export class PaymentsService implements OnModuleInit {
           );
         }
 
+        // Tăng số lượt sử dụng của mã giảm giá (nếu có áp dụng)
+        if (order.coupon_id) {
+          await client.query(
+            `UPDATE coupons SET usage_count = usage_count + 1, updated_at = NOW() WHERE id = $1`,
+            [order.coupon_id],
+          );
+        }
+
         this.logger.log(`🎉 Order #${order.order_code} transitioned to PAID via PayOS!`);
       }
 
@@ -278,21 +286,49 @@ export class PaymentsService implements OnModuleInit {
     this.paymentLogger.logExpired(orderCode, details);
   }
 
-  // 3. Đăng ký Webhook URL với PayOS (Tùy chọn tiện ích)
-  async confirmWebhook(webhookUrl: string) {
+  // 3. Đăng ký Webhook URL với PayOS (Tùy chọn tiện ích, tự động chuẩn hóa đuôi)
+  async confirmWebhook(webhookUrl?: string) {
     if (!this.payos) {
       throw new BadRequestException('PayOS service is not initialized');
     }
-    const result = await this.payos.webhooks.confirm(webhookUrl);
-    this.logger.log(`PayOS webhook confirmed for URL: ${webhookUrl}`);
-    return result;
+    let targetUrl = (webhookUrl || '').trim().replace(/\/+$/, '');
+    if (!targetUrl) {
+      targetUrl = 'https://brightlingo-be.onrender.com/api/webhooks/payos';
+    } else if (targetUrl.endsWith('/webhooks/payos')) {
+      if (!targetUrl.endsWith('/api/webhooks/payos')) {
+        targetUrl = targetUrl.replace(/\/webhooks\/payos$/, '/api/webhooks/payos');
+      }
+    } else if (!targetUrl.endsWith('/api/webhooks/payos')) {
+      targetUrl = targetUrl + '/api/webhooks/payos';
+    }
+
+    const result = await this.payos.webhooks.confirm(targetUrl);
+    this.logger.log(`PayOS webhook confirmed for URL: ${targetUrl}`);
+    return { ...result, confirmedWebhookUrl: targetUrl };
+  }
+
+  private async getBankConfigFromDb() {
+    let bankName = this.configService.get<string>('payment.bankName', 'MBBANK');
+    let accountNumber = this.configService.get<string>('payment.accountNumber', '0399046519');
+    let accountName = this.configService.get<string>('payment.accountName', 'HA VAN MANH');
+    try {
+      const settingsQueryResult = await this.db.query(
+        `SELECT key, value FROM settings WHERE key IN ('bank_name', 'account_number', 'account_name')`,
+      );
+      for (const settingRow of settingsQueryResult.rows) {
+        if (settingRow.key === 'bank_name' && settingRow.value) bankName = settingRow.value;
+        if (settingRow.key === 'account_number' && settingRow.value) accountNumber = settingRow.value;
+        if (settingRow.key === 'account_name' && settingRow.value) accountName = settingRow.value;
+      }
+    } catch {
+      // Fallback to env config
+    }
+    return { bankName, accountNumber, accountName };
   }
 
   // Fallback tĩnh khi chưa có internet hoặc PayOS gặp sự cố tạm thời
-  private createFallbackPaymentInfo(options: CreatePaymentLinkOptions) {
-    const bankName = this.configService.get<string>('payment.bankName', 'MBBANK');
-    const accountNumber = this.configService.get<string>('payment.accountNumber', '0399046519');
-    const accountName = this.configService.get<string>('payment.accountName', 'HA VAN MANH');
+  private async createFallbackPaymentInfo(options: CreatePaymentLinkOptions) {
+    const { bankName, accountNumber, accountName } = await this.getBankConfigFromDb();
     const orderCodeStr = String(options.orderCode);
 
     const qrCodeUrl = `https://img.vietqr.io/image/${bankName}-${accountNumber}-compact2.png?amount=${options.amount}&addInfo=BL${orderCodeStr}&accountName=${encodeURIComponent(
