@@ -14,51 +14,64 @@ export class OrdersService {
   ) {}
 
   // Tạo đơn hàng mới ở trạng thái PENDING + Sinh link thanh toán VietQR qua PayOS
-  async create(dto: CreateOrderDto) {
+  async create(createOrderDto: CreateOrderDto) {
     // 1. Lấy thông tin khóa học để snapshot giá bán thực tế từ DB
-    const courseRes = await this.db.query(
+    const courseQueryResult = await this.db.query(
       `SELECT id, slug, title, price, original_price 
        FROM courses 
        WHERE (id = $1 OR slug = $2) AND status = 'PUBLISHED' AND deleted_at IS NULL`,
-      [dto.courseId || null, dto.courseSlug || null],
+      [createOrderDto.courseId || null, createOrderDto.courseSlug || null],
     );
 
-    if (courseRes.rows.length === 0) {
+    if (courseQueryResult.rows.length === 0) {
       throw new NotFoundException('Khóa học không tồn tại hoặc đã ngừng bán');
     }
 
-    const course = courseRes.rows[0];
-    const originalPrice = course.original_price;
-    let unitPrice = course.price;
+    const targetCourse = courseQueryResult.rows[0];
+    const originalPrice = targetCourse.original_price;
+    let unitPrice = targetCourse.price;
     let discountAmount = 0;
     let couponId = null;
     let couponCode = null;
 
     // 2. Validate Coupon nếu có (Server-side validation theo BR-07)
-    if (dto.couponCode) {
-      const cleanCode = dto.couponCode.trim().toUpperCase();
-      const couponRes = await this.db.query(
-        `SELECT id, code, type, value, min_order_amount, max_discount_amount, usage_limit, usage_count 
+    if (createOrderDto.couponCode) {
+      const normalizedCouponCode = createOrderDto.couponCode.trim().toUpperCase();
+      const couponQueryResult = await this.db.query(
+        `SELECT id, code, type, value, min_order_amount, max_discount_amount, usage_limit, usage_count, scope 
          FROM coupons 
          WHERE code = $1 AND status = 'ACTIVE' AND deleted_at IS NULL
            AND (start_date IS NULL OR start_date <= NOW())
            AND (end_date IS NULL OR end_date >= NOW())`,
-        [cleanCode],
+        [normalizedCouponCode],
       );
 
-      if (couponRes.rows.length > 0) {
-        const coupon = couponRes.rows[0];
-        if (!coupon.usage_limit || coupon.usage_count < coupon.usage_limit) {
-          if (unitPrice >= (coupon.min_order_amount || 0)) {
-            couponId = coupon.id;
-            couponCode = coupon.code;
-            if (coupon.type === 'PERCENT') {
-              discountAmount = Math.round((unitPrice * coupon.value) / 100);
-              if (coupon.max_discount_amount && discountAmount > coupon.max_discount_amount) {
-                discountAmount = coupon.max_discount_amount;
+      if (couponQueryResult.rows.length > 0) {
+        const foundCoupon = couponQueryResult.rows[0];
+
+        // Kiểm tra phạm vi áp dụng (scope)
+        let isScopeValid = true;
+        if (foundCoupon.scope === 'SPECIFIC') {
+          const courseScopeQueryResult = await this.db.query(
+            `SELECT id FROM coupon_courses WHERE coupon_id = $1 AND course_id = $2`,
+            [foundCoupon.id, targetCourse.id],
+          );
+          if (courseScopeQueryResult.rows.length === 0) {
+            isScopeValid = false;
+          }
+        }
+
+        if (isScopeValid && (!foundCoupon.usage_limit || foundCoupon.usage_count < foundCoupon.usage_limit)) {
+          if (unitPrice >= (foundCoupon.min_order_amount || 0)) {
+            couponId = foundCoupon.id;
+            couponCode = foundCoupon.code;
+            if (foundCoupon.type === 'PERCENT') {
+              discountAmount = Math.round((unitPrice * foundCoupon.value) / 100);
+              if (foundCoupon.max_discount_amount && discountAmount > foundCoupon.max_discount_amount) {
+                discountAmount = foundCoupon.max_discount_amount;
               }
             } else {
-              discountAmount = coupon.value;
+              discountAmount = foundCoupon.value;
             }
           }
         }
@@ -71,11 +84,11 @@ export class OrdersService {
     const numericOrderCode = Math.floor(Date.now() / 1000);
     const orderCodeStr = String(numericOrderCode);
 
-    const cleanCustomerName = SecurityUtil.sanitizeText(dto.customerName);
-    const cleanCustomerEmail = SecurityUtil.sanitizeText(dto.customerEmail).toLowerCase().trim();
-    const cleanCustomerPhone = dto.customerPhone ? SecurityUtil.sanitizeText(dto.customerPhone) : null;
-    const cleanLandingUrl = dto.landingUrl ? SecurityUtil.sanitizeUrl(dto.landingUrl, 'Landing URL') : null;
-    const cleanReferrerUrl = dto.referrerUrl ? SecurityUtil.sanitizeUrl(dto.referrerUrl, 'Referrer URL') : null;
+    const cleanCustomerName = SecurityUtil.sanitizeText(createOrderDto.customerName);
+    const cleanCustomerEmail = SecurityUtil.sanitizeText(createOrderDto.customerEmail).toLowerCase().trim();
+    const cleanCustomerPhone = createOrderDto.customerPhone ? SecurityUtil.sanitizeText(createOrderDto.customerPhone) : null;
+    const cleanLandingUrl = createOrderDto.landingUrl ? SecurityUtil.sanitizeUrl(createOrderDto.landingUrl, 'Landing URL') : null;
+    const cleanReferrerUrl = createOrderDto.referrerUrl ? SecurityUtil.sanitizeUrl(createOrderDto.referrerUrl, 'Referrer URL') : null;
 
     // 3. Lưu đơn hàng vào Database (Snapshot giá & Attribution theo BR-07, BR-08, BR-09)
     await this.db.query(
@@ -94,14 +107,14 @@ export class OrdersService {
       )`,
       [
         orderId, orderCodeStr, cleanCustomerName, cleanCustomerEmail, cleanCustomerPhone,
-        course.id, course.title, course.slug, originalPrice, unitPrice,
+        targetCourse.id, targetCourse.title, targetCourse.slug, originalPrice, unitPrice,
         discountAmount, totalAmount, couponId, couponCode,
-        dto.ref ? SecurityUtil.sanitizeText(dto.ref) : null,
-        dto.utmSource ? SecurityUtil.sanitizeText(dto.utmSource) : null,
-        dto.utmMedium ? SecurityUtil.sanitizeText(dto.utmMedium) : null,
-        dto.utmCampaign ? SecurityUtil.sanitizeText(dto.utmCampaign) : null,
-        dto.utmContent ? SecurityUtil.sanitizeText(dto.utmContent) : null,
-        dto.utmTerm ? SecurityUtil.sanitizeText(dto.utmTerm) : null,
+        createOrderDto.ref ? SecurityUtil.sanitizeText(createOrderDto.ref) : null,
+        createOrderDto.utmSource ? SecurityUtil.sanitizeText(createOrderDto.utmSource) : null,
+        createOrderDto.utmMedium ? SecurityUtil.sanitizeText(createOrderDto.utmMedium) : null,
+        createOrderDto.utmCampaign ? SecurityUtil.sanitizeText(createOrderDto.utmCampaign) : null,
+        createOrderDto.utmContent ? SecurityUtil.sanitizeText(createOrderDto.utmContent) : null,
+        createOrderDto.utmTerm ? SecurityUtil.sanitizeText(createOrderDto.utmTerm) : null,
         cleanLandingUrl, cleanReferrerUrl,
       ],
     );
@@ -113,14 +126,14 @@ export class OrdersService {
       description: `BL ${orderCodeStr}`,
       items: [
         {
-          name: course.title.slice(0, 50),
+          name: targetCourse.title.slice(0, 50),
           quantity: 1,
           price: totalAmount,
         },
       ],
     });
 
-    this.logger.log(`Created Pending Order #${orderCodeStr} (ID: ${orderId}) for ${dto.customerEmail}`);
+    this.logger.log(`Created Pending Order #${orderCodeStr} (ID: ${orderId}) for ${createOrderDto.customerEmail}`);
 
     return {
       orderId,
@@ -138,28 +151,28 @@ export class OrdersService {
 
   // Polling kiểm tra trạng thái thanh toán từ Frontend
   async getStatus(orderIdOrCode: string) {
-    const res = await this.db.query(
+    const orderQueryResult = await this.db.query(
       `SELECT id, order_code, status, total_amount, paid_at, customer_email, customer_name 
        FROM orders 
        WHERE id = $1 OR order_code = $1 OR order_code = $2`,
       [orderIdOrCode, orderIdOrCode.replace(/^BL-/, '')],
     );
 
-    if (res.rows.length === 0) {
+    if (orderQueryResult.rows.length === 0) {
       throw new NotFoundException(`Không tìm thấy đơn hàng: ${orderIdOrCode}`);
     }
 
-    const row = res.rows[0];
+    const orderRecord = orderQueryResult.rows[0];
     return {
-      orderId: row.id,
-      orderCode: row.order_code,
-      status: row.status,
-      amount: row.total_amount,
-      paidAt: row.paid_at,
-      customerEmail: row.customer_email,
-      customerName: row.customer_name,
+      orderId: orderRecord.id,
+      orderCode: orderRecord.order_code,
+      status: orderRecord.status,
+      amount: orderRecord.total_amount,
+      paidAt: orderRecord.paid_at,
+      customerEmail: orderRecord.customer_email,
+      customerName: orderRecord.customer_name,
       message:
-        row.status === 'PAID'
+        orderRecord.status === 'PAID'
           ? 'Giao dịch thanh toán thành công!'
           : 'Đang chờ xác nhận chuyển khoản từ ngân hàng...',
     };
