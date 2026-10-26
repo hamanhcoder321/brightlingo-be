@@ -226,9 +226,9 @@ export const DEFAULT_BANNERS: BannerItemConfig[] = [
 export const DEFAULT_REDIRECTS_301: Redirect301Item[] = [
   {
     id: 'red-1',
-    from: '/khoa-hoc/day-con-tieng-anh',
-    to: '/khoa-hoc/me-day-con-tieng-anh',
-    note: 'Tự tạo khi đổi slug',
+    from: '/khoa-hoc/tu-hoc-tieng-anh',
+    to: '/khoa-hoc/tu-hoc-tieng-anh-tai-nha',
+    note: 'Tự tạo khi đổi slug khóa học',
   },
 ];
 
