@@ -61,8 +61,8 @@ export class CoursesController {
 
   @UseGuards(AuthGuard)
   @Post()
-  async createCourse(@Body() data: any) {
-    return this.coursesService.createCourse(data);
+  async createCourse(@Body() data: any, @Req() req: any) {
+    return this.coursesService.createCourse(data, req?.user);
   }
 
   @UseGuards(AuthGuard)
@@ -73,19 +73,19 @@ export class CoursesController {
 
   @UseGuards(AuthGuard)
   @Patch(':id/featured')
-  async setFeaturedPatch(@Param('id') id: string) {
-    return this.coursesService.setFeatured(id);
+  async setFeaturedPatch(@Param('id') id: string, @Req() req: any) {
+    return this.coursesService.setFeatured(id, req?.user);
   }
 
   @UseGuards(AuthGuard)
   @Put(':id/featured')
-  async setFeaturedPut(@Param('id') id: string) {
-    return this.coursesService.setFeatured(id);
+  async setFeaturedPut(@Param('id') id: string, @Req() req: any) {
+    return this.coursesService.setFeatured(id, req?.user);
   }
 
   @UseGuards(AuthGuard)
   @Delete(':id')
-  async deleteCourse(@Param('id') id: string) {
-    return this.coursesService.deleteCourse(id);
+  async deleteCourse(@Param('id') id: string, @Req() req: any) {
+    return this.coursesService.deleteCourse(id, req?.user);
   }
 }

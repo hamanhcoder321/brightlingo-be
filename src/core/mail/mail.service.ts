@@ -16,7 +16,7 @@ export class MailService {
 
   async sendMail(options: SendMailOptions): Promise<{ messageId: string }> {
     const apiKey = this.configService.get<string>('mail.resendApiKey');
-    const from = this.configService.get<string>('mail.fromEmail', 'noreply@brightlingo.com');
+    const from = this.configService.get<string>('mail.fromEmail', 'hotro@engnest.vn');
 
     this.logger.log(`[MailService] Sending email to: ${options.to} | Subject: ${options.subject}`);
 

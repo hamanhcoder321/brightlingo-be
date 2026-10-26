@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '@/core/database';
+import { AuditService } from '@/modules/audit/audit.service';
 
 export interface HomepageSectionConfig {
   id: string;
@@ -235,7 +236,10 @@ export const DEFAULT_REDIRECTS_301: Redirect301Item[] = [
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly auditService: AuditService,
+  ) {}
 
   private parseJsonSafe<T>(raw: string | undefined, fallback: T): T {
     if (!raw) return fallback;
@@ -327,11 +331,17 @@ export class SettingsService {
     const primaryDomain = map.primary_domain || 'https://engnest.vn';
     const defaultRobotsTxt = `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /thanh-toan\n\nSitemap: ${primaryDomain.replace(/\/$/, '')}/sitemap.xml`;
 
+    // Làm sạch placeholder giả lập xxxxxxxx để không in ra thẻ meta vô nghĩa (Task H4)
+    const cleanGoogleVerification =
+      map.google_site_verification && !map.google_site_verification.includes('xxxxxxxx')
+        ? map.google_site_verification
+        : '';
+
     return {
       // 1. Branding & Payment
       site_name: map.site_name || 'EngNest',
-      hotline: map.hotline || map.support_phone || '0989 898 989',
-      support_email: map.support_email || 'support@engnest.vn',
+      hotline: map.hotline || map.support_phone || '1900 8989',
+      support_email: map.support_email || 'hotro@engnest.vn',
       working_hours: map.working_hours || '8:00–21:00 hằng ngày',
       vietqr_bank_code: map.vietqr_bank_code || map.bank_name || 'MBBANK',
       vietqr_account_number: map.vietqr_account_number || map.account_number || '0399046519',
@@ -340,11 +350,11 @@ export class SettingsService {
       // 2. Liên kết, mạng xã hội & cộng đồng
       zalo_url: map.zalo_url || 'https://zalo.me/0989898989',
       fanpage_url: map.fanpage_url || 'https://facebook.com/engnest.vn',
-      community_group_url: map.community_group_url || 'https://facebook.com/groups/daycontienganhtunhien',
-      community_group_name: map.community_group_name || 'Dạy con tiếng Anh tự nhiên',
+      community_group_url: map.community_group_url || 'https://facebook.com/groups/tienganhtainha',
+      community_group_name: map.community_group_name || 'Tự học tiếng Anh tại nhà',
       community_members: map.community_members || '12.000+',
       youtube_tiktok_url: map.youtube_tiktok_url || '',
-      company_name: map.company_name || 'Hộ kinh doanh Giáo dục EngNest',
+      company_name: map.company_name || 'Engnest Education',
       tax_id: map.tax_id || '0109876543',
       company_address: map.company_address || 'Cầu Giấy, Hà Nội',
 
@@ -353,18 +363,15 @@ export class SettingsService {
       banners,
       active_banners: this.resolveActiveBannersByPosition(banners),
 
-      // 4. SEO & Google
+      // 4. SEO & Google (Task H4)
       meta_title:
-        map.meta_title || 'EngNest – Tiếng Anh online cho người lớn & mẹ dạy con',
+        map.meta_title || 'EngNest – Tự học tiếng Anh tại nhà',
       meta_description:
         map.meta_description ||
         'Khóa học tiếng Anh dạng video & PDF, mua một lần học trọn đời. Không cần tài khoản – thanh toán QR, nhận tài liệu qua email trong vài phút.',
       og_image: map.og_image || '',
       favicon: map.favicon || '/logo-tab-1.png',
-      google_site_verification:
-        map.google_site_verification !== undefined
-          ? map.google_site_verification
-          : '<meta name="google-site-verification" content="xxxxxxxx" />',
+      google_site_verification: cleanGoogleVerification,
       google_analytics_id: map.google_analytics_id || '',
       gtm_id: map.gtm_id || '',
       facebook_pixel_id: map.facebook_pixel_id || '',
@@ -431,9 +438,9 @@ export class SettingsService {
   }
 
   /**
-   * Cập nhật cấu hình từ CMS (Hỗ trợ lưu từng phần hoặc toàn bộ)
+   * Cập nhật cấu hình từ CMS (Hỗ trợ lưu từng phần hoặc toàn bộ & Ghi Audit Log)
    */
-  async updateSettings(payload: Record<string, any>) {
+  async updateSettings(payload: Record<string, any>, adminUser?: any) {
     const groupMap: Record<string, string> = {
       site_name: 'BRANDING',
       favicon: 'BRANDING',
@@ -537,6 +544,21 @@ export class SettingsService {
     }
 
     this.logger.log(`Settings updated by admin (${Object.keys(payload).join(', ')})`);
+
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'UPDATE_SETTINGS',
+      targetEntity: 'settings',
+      targetId: 'system_settings',
+      details: {
+        updatedKeys: Object.keys(payload),
+      },
+    });
+
     return this.getAllSettings();
   }
 

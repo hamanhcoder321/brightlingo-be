@@ -45,7 +45,7 @@ export class AuthService implements OnModuleInit {
       const res = await this.db.query('SELECT COUNT(*) as count FROM admins');
       const count = parseInt(res.rows[0]?.count || '0', 10);
       if (count === 0) {
-        const defaultEmail = 'admin@brightlingo.vn';
+        const defaultEmail = 'admin@engnest.vn';
         const defaultPass = 'Admin@123456';
         const hash = this.hashPassword(defaultPass);
 

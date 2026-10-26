@@ -95,14 +95,14 @@ export class EmailService {
     const { supportEmail, supportPhone, siteName } = await this.getBrandingSettings();
     const paymentTime = order.paid_at ? new Date(order.paid_at).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN');
     const amountPaid = formatVND(order.total_amount);
-    const resourceLink = order.resource_link || `mailto:${supportEmail}`;
+    const resourceLink = order.resource_link || 'https://engnest.vn/lien-he';
 
     const replacements: Record<string, string> = {
       '{{customer_name}}': order.customer_name || 'Học viên',
       '{ho_ten}': order.customer_name || 'Học viên',
-      '{{course_name}}': order.course_title || `Khóa học ${siteName}`,
-      '{{course_title}}': order.course_title || `Khóa học ${siteName}`,
-      '{ten_khoa_hoc}': order.course_title || `Khóa học ${siteName}`,
+      '{{course_name}}': order.course_title || 'Khóa học EngNest',
+      '{{course_title}}': order.course_title || 'Khóa học EngNest',
+      '{ten_khoa_hoc}': order.course_title || 'Khóa học EngNest',
       '{{order_code}}': order.order_code,
       '{ma_don}': order.order_code,
       '{{amount_paid}}': amountPaid,
@@ -251,7 +251,7 @@ export class EmailService {
 
   // Thông tin thương hiệu/hỗ trợ lấy từ bảng settings (CMS), fallback về cấu hình môi trường.
   private async getBrandingSettings() {
-    let supportEmail = this.configService.get<string>('mail.supportEmail', 'support@engnest.vn');
+    let supportEmail = this.configService.get<string>('mail.supportEmail', 'hotro@engnest.vn');
     let supportPhone = this.configService.get<string>('mail.supportPhone', '1900 8989');
     let siteName = 'EngNest';
 

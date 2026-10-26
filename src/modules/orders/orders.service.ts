@@ -1,17 +1,55 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { DatabaseService } from '@/core/database';
 import { PaymentsService } from '@/modules/payments';
 import { SecurityUtil } from '@/common/security/security.util';
 import { CreateOrderDto } from './dto/create-order.dto';
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OrdersService.name);
+  private expireInterval: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly db: DatabaseService,
     private readonly paymentsService: PaymentsService,
   ) {}
+
+  onModuleInit() {
+    // Quét dọn các đơn hàng PENDING cũ quá 15 phút ngay khi khởi động
+    this.expirePendingOrders();
+    // Chạy định kỳ mỗi 60 giây để tự động chuyển đơn quá 15 phút sang EXPIRED
+    this.expireInterval = setInterval(() => {
+      this.expirePendingOrders();
+    }, 60 * 1000);
+  }
+
+  onModuleDestroy() {
+    if (this.expireInterval) {
+      clearInterval(this.expireInterval);
+    }
+  }
+
+  // Tự động quét và chuyển trạng thái EXPIRED cho các đơn chờ quá 15 phút (BR-08)
+  async expirePendingOrders(): Promise<number> {
+    try {
+      const result = await this.db.query(
+        `UPDATE orders 
+         SET status = 'EXPIRED', updated_at = NOW() 
+         WHERE status = 'PENDING' 
+           AND created_at < NOW() - INTERVAL '15 minutes'
+         RETURNING id, order_code`,
+      );
+      if (result.rows.length > 0) {
+        this.logger.log(
+          `⏰ Đã tự động chuyển ${result.rows.length} đơn hàng PENDING quá hạn sang EXPIRED: ${result.rows.map((r: any) => '#' + r.order_code).join(', ')}`,
+        );
+      }
+      return result.rows.length;
+    } catch (err: any) {
+      this.logger.error('Lỗi khi tự động quét đơn hàng hết hạn:', err?.message || err);
+      return 0;
+    }
+  }
 
   // Tạo đơn hàng mới ở trạng thái PENDING + Sinh link thanh toán VietQR qua PayOS
   async create(createOrderDto: CreateOrderDto) {
@@ -149,10 +187,10 @@ export class OrdersService {
     };
   }
 
-  // Polling kiểm tra trạng thái thanh toán từ Frontend
+  // Polling kiểm tra trạng thái thanh toán từ Frontend (Tự động hết hạn sau 15 phút)
   async getStatus(orderIdOrCode: string) {
     const orderQueryResult = await this.db.query(
-      `SELECT id, order_code, status, total_amount, paid_at, customer_email, customer_name 
+      `SELECT id, order_code, status, total_amount, paid_at, customer_email, customer_name, created_at 
        FROM orders 
        WHERE id = $1 OR order_code = $1 OR order_code = $2`,
       [orderIdOrCode, orderIdOrCode.replace(/^BL-/, '')],
@@ -163,6 +201,21 @@ export class OrdersService {
     }
 
     const orderRecord = orderQueryResult.rows[0];
+
+    // Kiểm tra nếu đơn vẫn PENDING nhưng đã quá thời hạn 15 phút thì tự động chuyển EXPIRED
+    if (orderRecord.status === 'PENDING') {
+      const orderCreatedAt = new Date(orderRecord.created_at).getTime();
+      const fifteenMinutesMs = 15 * 60 * 1000;
+      if (Date.now() - orderCreatedAt > fifteenMinutesMs) {
+        await this.db.query(
+          `UPDATE orders SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1`,
+          [orderRecord.id],
+        );
+        orderRecord.status = 'EXPIRED';
+        this.logger.log(`⏰ Đơn hàng #${orderRecord.order_code} đã hết hạn thời gian thanh toán (EXPIRED).`);
+      }
+    }
+
     return {
       orderId: orderRecord.id,
       orderCode: orderRecord.order_code,
@@ -174,7 +227,11 @@ export class OrdersService {
       message:
         orderRecord.status === 'PAID'
           ? 'Giao dịch thanh toán thành công!'
-          : 'Đang chờ xác nhận chuyển khoản từ ngân hàng...',
+          : orderRecord.status === 'EXPIRED'
+            ? 'Mã thanh toán VietQR đã hết hạn (sau 15 phút). Vui lòng tạo đơn hàng mới.'
+            : orderRecord.status === 'CANCELLED'
+              ? 'Đơn hàng đã bị hủy.'
+              : 'Đang chờ xác nhận chuyển khoản từ ngân hàng...',
     };
   }
 
@@ -219,9 +276,11 @@ export class OrdersService {
             ? 'Paid'
             : r.status === 'PENDING'
               ? 'Pending'
-              : r.status === 'CANCELLED'
-                ? 'Cancelled'
-                : r.status,
+              : r.status === 'EXPIRED'
+                ? 'Expired'
+                : r.status === 'CANCELLED'
+                  ? 'Cancelled'
+                  : r.status,
       })),
       total: res.rows.length,
     };
@@ -256,9 +315,11 @@ export class OrdersService {
           ? 'Paid'
           : r.status === 'PENDING'
             ? 'Pending'
-            : r.status === 'CANCELLED'
-              ? 'Cancelled'
-              : r.status,
+            : r.status === 'EXPIRED'
+              ? 'Expired'
+              : r.status === 'CANCELLED'
+                ? 'Cancelled'
+                : r.status,
     };
   }
 }

@@ -7,9 +7,10 @@ import {
   databaseConfig,
   mailConfig,
   paymentConfig,
+  storageConfig,
 } from '@/config';
 
-import { DatabaseModule, MailModule } from '@/core';
+import { DatabaseModule, MailModule, StorageModule } from '@/core';
 import { HttpExceptionFilter, LoggingInterceptor } from '@/common';
 
 import {
@@ -34,11 +35,12 @@ import { AppService } from './app.service';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, mailConfig, paymentConfig],
+      load: [appConfig, databaseConfig, mailConfig, paymentConfig, storageConfig],
       envFilePath: ['.env.local', '.env'],
     }),
     DatabaseModule,
     MailModule,
+    StorageModule,
     AuditModule,
     CoursesModule,
     OrdersModule,

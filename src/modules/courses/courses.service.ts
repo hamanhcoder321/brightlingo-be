@@ -165,8 +165,8 @@ export class CoursesService {
     return fallbackName || 'Giao tiếp thực tế';
   }
 
-  // Tạo khóa học mới (Bảo mật: Validate & Làm sạch tất cả input, link ảnh/video)
-  async createCourse(data: any) {
+  // Tạo khóa học mới (Bảo mật: Validate & Làm sạch tất cả input, link ảnh/video & Ghi Audit Log)
+  async createCourse(data: any, adminUser?: any) {
     const id = data.id ? SecurityUtil.sanitizeText(data.id) : `course-${Date.now()}`;
     const rawSlug = data.slug ? SecurityUtil.sanitizeText(data.slug) : id;
     const slug = rawSlug.toLowerCase().trim();
@@ -261,6 +261,24 @@ export class CoursesService {
       JSON.stringify(benefits), JSON.stringify(curriculum), JSON.stringify(bankInfo), resourceLink, status,
       seoTitle, seoDescription, ogImage, isFeatured,
     ]);
+
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'CREATE_COURSE',
+      targetEntity: 'courses',
+      targetId: String(res.rows[0].id),
+      details: {
+        title: res.rows[0].title,
+        slug: res.rows[0].slug,
+        price: res.rows[0].price,
+        status: res.rows[0].status,
+        categoryId: res.rows[0].category_id,
+      },
+    });
 
     return this.mapToDto(res.rows[0], true);
   }
@@ -407,6 +425,37 @@ export class CoursesService {
       });
     }
 
+    // Ghi Audit Log khi thay đổi trạng thái khóa học (DRAFT <-> PUBLISHED)
+    if (data.status && String(data.status).toUpperCase() !== current.status) {
+      await this.auditService.log({
+        adminId: adminIdNum,
+        adminName: adminDisplayName,
+        action: 'CHANGE_COURSE_STATUS',
+        targetEntity: 'courses',
+        targetId: String(targetId),
+        details: {
+          oldStatus: current.status,
+          newStatus: status,
+          courseTitle: title,
+        },
+      });
+    }
+
+    // Ghi Audit Log cập nhật thông tin khóa học
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'UPDATE_COURSE',
+      targetEntity: 'courses',
+      targetId: String(targetId),
+      details: {
+        courseTitle: title,
+        slug,
+        status,
+        price,
+      },
+    });
+
     const query = `
       UPDATE courses
       SET title = $1,
@@ -471,8 +520,8 @@ export class CoursesService {
     return this.mapToDto(res.rows[0], true);
   }
 
-  // Đặt một khóa học làm khóa nổi bật duy nhất (hoặc hủy nổi bật nếu bấm lại)
-  async setFeatured(id: string) {
+  // Đặt một khóa học làm khóa nổi bật duy nhất (Ghi Audit Log)
+  async setFeatured(id: string, adminUser?: any) {
     const existing = await this.db.query(
       `SELECT id, slug, title, is_featured FROM courses WHERE (id = $1 OR slug = $1) AND deleted_at IS NULL`,
       [id],
@@ -490,18 +539,50 @@ export class CoursesService {
       await this.db.query(`UPDATE courses SET is_featured = true WHERE id = $1`, [targetId]);
     }
 
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'UPDATE_FEATURED',
+      targetEntity: 'courses',
+      targetId: String(targetId),
+      details: {
+        courseTitle: existing.rows[0].title,
+        slug: existing.rows[0].slug,
+        isFeatured: !currentlyFeatured,
+      },
+    });
+
     return this.getBySlug(targetId, true);
   }
 
-  // Xóa chỉ khóa học này (Soft delete, tuyệt đối KHÔNG đụng đến bảng categories)
-  async deleteCourse(id: string) {
+  // Xóa chỉ khóa học này (Soft delete & Ghi Audit Log)
+  async deleteCourse(id: string, adminUser?: any) {
     const res = await this.db.query(
-      `UPDATE courses SET deleted_at = NOW() WHERE (id = $1 OR slug = $1) AND deleted_at IS NULL RETURNING id, title, category_id`,
+      `UPDATE courses SET deleted_at = NOW() WHERE (id = $1 OR slug = $1) AND deleted_at IS NULL RETURNING id, title, slug, category_id`,
       [id],
     );
     if (res.rows.length === 0) {
       throw new NotFoundException(`Khóa học không tồn tại hoặc đã được xóa`);
     }
+
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'DELETE_COURSE',
+      targetEntity: 'courses',
+      targetId: String(res.rows[0].id),
+      details: {
+        title: res.rows[0].title,
+        slug: res.rows[0].slug,
+      },
+    });
+
     return {
       success: true,
       message: `Đã xóa khóa học "${res.rows[0].title}". Danh mục khóa học được giữ nguyên.`,
@@ -568,6 +649,12 @@ export class CoursesService {
     return res.rows[0];
   }
 
+  private normalizeMediaUrl(url?: string): string {
+    if (!url) return '';
+    const publicUrl = (process.env.PUBLIC_URL || process.env.BACKEND_URL || 'https://brightlingo-be.onrender.com').trim().replace(/\/+$/, '');
+    return url.replace(/https?:\/\/(localhost|127\.0\.0\.1):4000\/uploads\//g, `${publicUrl}/uploads/`);
+  }
+
   private mapToDto(row: any, isAdmin: boolean = false) {
     const isFeatured = Boolean(row.is_featured);
     const rawCurriculum = typeof row.curriculum === 'object' && row.curriculum !== null ? row.curriculum : {};
@@ -575,6 +662,10 @@ export class CoursesService {
     const shortDescription = rawCurriculum.description || row.tag_badge || row.title;
     const totalDuration = rawCurriculum.totalDuration || row.video_demo_duration || '9 giờ';
     const courseFaqs = Array.isArray(rawCurriculum.faqs) ? rawCurriculum.faqs : [];
+
+    const normalizedImage = this.normalizeMediaUrl(row.image);
+    const normalizedVideoUrl = this.normalizeMediaUrl(row.video_url);
+    const normalizedOgImage = this.normalizeMediaUrl(row.og_image || row.image);
 
     const dto: any = {
       id: row.id,
@@ -589,20 +680,16 @@ export class CoursesService {
       rating: parseFloat(row.rating || 5.0),
       reviewsCount: row.reviews_count,
       studentsCount: row.students_count,
-      viewsCount: row.views_count ? parseInt(row.views_count, 10) : 0,
-      buyersCount: row.buyers_count !== undefined ? parseInt(row.buyers_count, 10) : 0,
-      realRevenue: row.real_revenue !== undefined ? parseInt(row.real_revenue, 10) : 0,
-      createdCount: row.created_count !== undefined ? parseInt(row.created_count, 10) : 0,
       status: row.status || 'PUBLISHED',
       lastUpdated: row.last_updated,
       price: row.price,
       originalPrice: row.original_price,
       discountPercent: row.discount_percent,
-      image: row.image,
+      image: normalizedImage,
       videoDemoTitle: (row.video_demo_title || 'Xem video demo bài giảng').replace(/\s*\(\s*\d+\s*phút\s*\)/gi, '').trim(),
       videoDemoDuration: totalDuration,
       videoDemoSubtitle: row.video_demo_subtitle || 'Phương pháp phản xạ tình huống độc quyền',
-      videoUrl: row.video_url || '',
+      videoUrl: normalizedVideoUrl,
       benefits: row.benefits,
       curriculum: {
         ...rawCurriculum,
@@ -611,10 +698,9 @@ export class CoursesService {
         sections: Array.isArray(rawCurriculum.sections) ? rawCurriculum.sections : [],
       },
       faqs: courseFaqs,
-      bankInfo: row.bank_info,
       seoTitle: row.seo_title || row.title,
       seoDescription: row.seo_description || shortDescription || '',
-      ogImage: row.og_image || row.image,
+      ogImage: normalizedOgImage,
       meta: formatSummary.split('•')[0].trim(),
       highlights: Array.isArray(row.benefits) ? row.benefits.map((b: any) => b.title) : [],
       isFeatured,
@@ -625,9 +711,15 @@ export class CoursesService {
         : undefined,
     };
 
-    // TUÂN THỦ NGHIÊM NGẶT BR-02: Link tài nguyên (resource_link) tuyệt đối KHÔNG expose qua Public API.
-    // Chỉ trả về khi request được xác thực bởi Quản trị viên (CMS).
+    // BẢO MẬT P0 (C5 & BR-02):
+    // 1. DTO công khai: Tuyệt đối KHÔNG trả realRevenue, buyersCount, createdCount, viewsCount, bankInfo, resourceLink
+    // 2. Chỉ trả về các số liệu nhạy cảm kinh doanh & thông tin quản trị khi là Quản trị viên (CMS) đã xác thực
     if (isAdmin) {
+      dto.viewsCount = row.views_count ? parseInt(row.views_count, 10) : 0;
+      dto.buyersCount = row.buyers_count !== undefined ? parseInt(row.buyers_count, 10) : 0;
+      dto.realRevenue = row.real_revenue !== undefined ? parseInt(row.real_revenue, 10) : 0;
+      dto.createdCount = row.created_count !== undefined ? parseInt(row.created_count, 10) : 0;
+      dto.bankInfo = row.bank_info;
       dto.resourceLink = row.resource_link || '';
       dto.resource_link = row.resource_link || '';
     }
