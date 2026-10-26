@@ -54,6 +54,20 @@ const imageStorage = diskStorage({
 @UseGuards(AuthGuard)
 @Controller('api/upload')
 export class UploadController {
+  private getPublicBaseUrl(req: Request): string {
+    const configuredPublicUrl = process.env.PUBLIC_URL || process.env.BACKEND_URL;
+    if (configuredPublicUrl) {
+      return configuredPublicUrl.trim().replace(/\/+$/, '');
+    }
+    const host = req.get('host') || 'localhost:4000';
+    const isHttps =
+      req.get('x-forwarded-proto') === 'https' ||
+      req.protocol === 'https' ||
+      (!host.startsWith('localhost') && !host.startsWith('127.0.0.1'));
+    const protocol = isHttps ? 'https' : 'http';
+    return `${protocol}://${host}`;
+  }
+
   @Post('video')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -74,13 +88,8 @@ export class UploadController {
     if (!file) {
       throw new BadRequestException('Không tìm thấy tệp video được tải lên.');
     }
-    const host = req.get('host') || 'localhost:4000';
-    const isHttps =
-      req.get('x-forwarded-proto') === 'https' ||
-      req.protocol === 'https' ||
-      (!host.startsWith('localhost') && !host.startsWith('127.0.0.1'));
-    const protocol = isHttps ? 'https' : 'http';
-    const fileUrl = `${protocol}://${host}/uploads/videos/${file.filename}`;
+    const baseUrl = this.getPublicBaseUrl(req);
+    const fileUrl = `${baseUrl}/uploads/videos/${file.filename}`;
 
     return {
       success: true,
@@ -129,13 +138,8 @@ export class UploadController {
       }
     }
 
-    const host = req.get('host') || 'localhost:4000';
-    const isHttps =
-      req.get('x-forwarded-proto') === 'https' ||
-      req.protocol === 'https' ||
-      (!host.startsWith('localhost') && !host.startsWith('127.0.0.1'));
-    const protocol = isHttps ? 'https' : 'http';
-    const fileUrl = `${protocol}://${host}/uploads/images/${file.filename}`;
+    const baseUrl = this.getPublicBaseUrl(req);
+    const fileUrl = `${baseUrl}/uploads/images/${file.filename}`;
 
     return {
       success: true,

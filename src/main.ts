@@ -111,7 +111,7 @@ async function bootstrap() {
   );
 
   await app.listen(port);
-  logger.log(`🚀 BrightLingo API is running at: http://localhost:${port}`);
+  logger.log(`🚀 EngNest API is running at: http://localhost:${port}`);
   logger.log(`📚 Public Courses API: http://localhost:${port}/api/courses`);
   logger.log(`💳 Webhook BankNoti: http://localhost:${port}/api/webhooks/banknoti`);
   logger.log(`📊 CMS Admin Dashboard: http://localhost:${port}/api/admin/dashboard`);
