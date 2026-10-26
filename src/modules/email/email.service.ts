@@ -43,17 +43,17 @@ export class EmailService {
 
     let template = templateRes.rows[0];
     if (!template) {
-      // Fallback template mặc định chuẩn giao diện BrightLingo
+      // Fallback template mặc định chuẩn giao diện EngNest
       template = {
         id: null,
-        subject: `[BrightLingo] Kích hoạt thành công khóa học: {{course_name}} (Đơn hàng #{{order_code}})`,
+        subject: `[EngNest] Kích hoạt thành công khóa học: {{course_name}} (Đơn hàng #{{order_code}})`,
         body_html: `<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; padding: 28px; background-color: #ffffff;">
           <div style="text-align: center; margin-bottom: 24px;">
             <div style="display: inline-block; background-color: #0B6E6E; color: #ffffff; font-weight: bold; font-size: 20px; padding: 10px 20px; border-radius: 8px;">
-              BrightLingo
+              EngNest
             </div>
             <h2 style="color: #0B6E6E; margin-top: 16px; margin-bottom: 8px;">Kích hoạt khóa học & Giao tài liệu thành công!</h2>
-            <p style="color: #64748b; font-size: 14px; margin: 0;">Cảm ơn bạn đã lựa chọn học cùng BrightLingo</p>
+            <p style="color: #64748b; font-size: 14px; margin: 0;">Cảm ơn bạn đã lựa chọn học cùng EngNest</p>
           </div>
 
           <p>Xin chào <strong>{{customer_name}}</strong>,</p>
@@ -92,7 +92,7 @@ export class EmailService {
     }
 
     // 3. Render các placeholder theo tài liệu BA Mục 9.3
-    let supportEmail = this.configService.get<string>('mail.supportEmail', 'support@brightlingo.vn');
+    let supportEmail = this.configService.get<string>('mail.supportEmail', 'hotro@engnest.vn');
     let supportPhone = this.configService.get<string>('mail.supportPhone', '1900 8989');
 
     try {
@@ -107,17 +107,17 @@ export class EmailService {
       // Fallback to defaults
     }
 
-    const siteName = this.configService.get<string>('app.name', 'BrightLingo');
+    const siteName = this.configService.get<string>('app.name', 'EngNest');
     const paymentTime = order.paid_at ? new Date(order.paid_at).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN');
     const amountPaid = formatVND(order.total_amount);
-    const resourceLink = order.resource_link || 'https://brightlingo.vn/lien-he';
+    const resourceLink = order.resource_link || 'https://engnest.vn/lien-he';
 
     const replacements: Record<string, string> = {
       '{{customer_name}}': order.customer_name || 'Học viên',
       '{ho_ten}': order.customer_name || 'Học viên',
-      '{{course_name}}': order.course_title || 'Khóa học BrightLingo',
-      '{{course_title}}': order.course_title || 'Khóa học BrightLingo',
-      '{ten_khoa_hoc}': order.course_title || 'Khóa học BrightLingo',
+      '{{course_name}}': order.course_title || 'Khóa học EngNest',
+      '{{course_title}}': order.course_title || 'Khóa học EngNest',
+      '{ten_khoa_hoc}': order.course_title || 'Khóa học EngNest',
       '{{order_code}}': order.order_code,
       '{ma_don}': order.order_code,
       '{{amount_paid}}': amountPaid,
@@ -281,11 +281,11 @@ export class EmailService {
       '{so_tien}': '799.000',
       '{{payment_time}}': new Date().toLocaleString('vi-VN'),
       '{thoi_gian}': new Date().toLocaleString('vi-VN'),
-      '{{resource_link}}': 'https://drive.google.com/drive/folders/test-brightlingo-demo',
-      '{link_drive}': 'https://drive.google.com/drive/folders/test-brightlingo-demo',
-      '{{support_email}}': this.configService.get<string>('mail.supportEmail', 'support@brightlingo.vn'),
+      '{{resource_link}}': 'https://drive.google.com/drive/folders/test-engnest-demo',
+      '{link_drive}': 'https://drive.google.com/drive/folders/test-engnest-demo',
+      '{{support_email}}': this.configService.get<string>('mail.supportEmail', 'hotro@engnest.vn'),
       '{{support_phone}}': this.configService.get<string>('mail.supportPhone', '1900 8989'),
-      '{{site_name}}': this.configService.get<string>('app.name', 'BrightLingo'),
+      '{{site_name}}': this.configService.get<string>('app.name', 'EngNest'),
     };
 
     let subject = `[TEST] ${tpl.subject}`;

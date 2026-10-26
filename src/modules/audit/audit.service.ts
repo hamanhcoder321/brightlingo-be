@@ -79,7 +79,7 @@ export class AuditService {
       entity_type: row.target_entity,
       entity_id: row.target_id,
       actor_name: row.admin_name || 'Quản trị viên',
-      actor_email: 'admin@brightlingo.vn',
+      actor_email: 'admin@engnest.vn',
       metadata: typeof row.details === 'string' ? JSON.parse(row.details) : row.details || {},
       ip_address: row.ip_address,
       created_at: row.created_at,

@@ -22,7 +22,7 @@ export class AppController {
     }
     return {
       success: true,
-      message: 'BrightLingo API is running',
+      message: 'EngNest API is running',
       timestamp: new Date().toISOString(),
     };
   }

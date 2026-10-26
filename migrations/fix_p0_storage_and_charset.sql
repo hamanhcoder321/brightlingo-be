@@ -30,13 +30,22 @@ SET value = REPLACE(value, 'http://localhost:4000/uploads/', 'https://brightling
     updated_at = NOW()
 WHERE value LIKE '%localhost:4000%';
 
--- 3. Đồng bộ thương hiệu BrightLingo & tắt noindex chặn bot tìm kiếm (Task C6, H4)
-UPDATE settings SET value = 'BrightLingo Education', updated_at = NOW() WHERE key = 'company_name';
-UPDATE settings SET value = 'BrightLingo', updated_at = NOW() WHERE key = 'site_name';
-UPDATE settings SET value = 'https://brightlingo-fe.vercel.app', updated_at = NOW() WHERE key = 'primary_domain';
-UPDATE settings SET value = 'BrightLingo – Nền tảng học tiếng Anh online thực chiến cho mọi nhà', updated_at = NOW() WHERE key = 'meta_title';
+-- 3. Đồng bộ thương hiệu EngNest & domain engnest.vn, tắt noindex chặn bot tìm kiếm (Task C6, H4)
+UPDATE settings SET value = 'Hộ kinh doanh Giáo dục EngNest', updated_at = NOW() WHERE key = 'company_name';
+UPDATE settings SET value = 'EngNest', updated_at = NOW() WHERE key = 'site_name';
+UPDATE settings SET value = 'https://engnest.vn', updated_at = NOW() WHERE key = 'primary_domain';
+UPDATE settings SET value = 'EngNest – Tiếng Anh online cho người lớn & mẹ dạy con', updated_at = NOW() WHERE key = 'meta_title';
+UPDATE settings SET value = 'hotro@engnest.vn', updated_at = NOW() WHERE key = 'support_email';
+UPDATE settings SET value = 'https://facebook.com/engnest.vn', updated_at = NOW() WHERE key = 'fanpage_url';
 UPDATE settings SET value = 'false', updated_at = NOW() WHERE key = 'noindex';
-UPDATE settings SET value = E'User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /thanh-toan\n\nSitemap: https://brightlingo-fe.vercel.app/sitemap.xml', updated_at = NOW() WHERE key = 'robots_txt';
+UPDATE settings SET value = E'User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /thanh-toan\n\nSitemap: https://engnest.vn/sitemap.xml', updated_at = NOW() WHERE key = 'robots_txt';
 UPDATE settings SET value = '', updated_at = NOW() WHERE key = 'google_site_verification';
+
+-- 4. Đồng bộ tiêu đề và nội dung email template sang EngNest
+UPDATE email_templates
+SET subject = '[EngNest] Kích hoạt thành công khóa học: {{course_name}} (Đơn hàng #{{order_code}})',
+    body_html = REPLACE(body_html, 'BrightLingo', 'EngNest'),
+    updated_at = NOW()
+WHERE code = 'ORDER_PAID_RESOURCE_DELIVERY';
 
 COMMIT;

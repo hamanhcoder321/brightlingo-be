@@ -66,7 +66,7 @@ export class PaymentsService implements OnModuleInit {
         returnUrl: options.returnUrl || `${frontendUrl}/checkout/success`,
         items: options.items || [
           {
-            name: 'BrightLingo Course',
+            name: 'Khóa học EngNest',
             quantity: 1,
             price: options.amount,
           },
