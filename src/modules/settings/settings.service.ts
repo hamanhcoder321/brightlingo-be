@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '@/core/database';
+import { AuditService } from '@/modules/audit/audit.service';
 
 export interface HomepageSectionConfig {
   id: string;
@@ -235,7 +236,10 @@ export const DEFAULT_REDIRECTS_301: Redirect301Item[] = [
 export class SettingsService {
   private readonly logger = new Logger(SettingsService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly auditService: AuditService,
+  ) {}
 
   private parseJsonSafe<T>(raw: string | undefined, fallback: T): T {
     if (!raw) return fallback;
@@ -434,9 +438,9 @@ export class SettingsService {
   }
 
   /**
-   * Cập nhật cấu hình từ CMS (Hỗ trợ lưu từng phần hoặc toàn bộ)
+   * Cập nhật cấu hình từ CMS (Hỗ trợ lưu từng phần hoặc toàn bộ & Ghi Audit Log)
    */
-  async updateSettings(payload: Record<string, any>) {
+  async updateSettings(payload: Record<string, any>, adminUser?: any) {
     const groupMap: Record<string, string> = {
       site_name: 'BRANDING',
       favicon: 'BRANDING',
@@ -540,6 +544,21 @@ export class SettingsService {
     }
 
     this.logger.log(`Settings updated by admin (${Object.keys(payload).join(', ')})`);
+
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'UPDATE_SETTINGS',
+      targetEntity: 'settings',
+      targetId: 'system_settings',
+      details: {
+        updatedKeys: Object.keys(payload),
+      },
+    });
+
     return this.getAllSettings();
   }
 

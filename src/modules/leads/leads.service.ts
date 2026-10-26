@@ -1,13 +1,17 @@
 import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { DatabaseService } from '@/core/database';
 import { SecurityUtil } from '@/common/security/security.util';
+import { AuditService } from '@/modules/audit/audit.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 
 @Injectable()
 export class LeadsService {
   private readonly logger = new Logger(LeadsService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly auditService: AuditService,
+  ) {}
 
   // Tiếp nhận Lead đăng ký tư vấn 30 phút từ Landing page / Form tư vấn (Mục 13 BA)
   async create(dto: CreateLeadDto) {
@@ -171,37 +175,50 @@ export class LeadsService {
     };
   }
 
-  // Cập nhật trạng thái và ghi chú tư vấn cho Admin CMS
-  async updateStatus(id: string, status: string, notes?: string) {
+  // Cập nhật trạng thái và ghi chú tư vấn cho Admin CMS (Ghi Audit Log - BR-06)
+  async updateStatus(id: string, status: string, notes?: string, adminUser?: any) {
     if (!id) {
       throw new BadRequestException('Lead ID không hợp lệ');
     }
 
-    const cleanStatus = (status || 'NEW').trim().toUpperCase();
-    const cleanNotes = notes !== undefined && notes !== null ? SecurityUtil.sanitizeText(notes) : null;
-
-    let res;
-    if (notes !== undefined && notes !== null) {
-      res = await this.db.query(
-        `UPDATE consultation_leads 
-         SET status = $1, notes = $2, updated_at = NOW() 
-         WHERE id = $3 AND deleted_at IS NULL 
-         RETURNING *`,
-        [cleanStatus, cleanNotes, id],
-      );
-    } else {
-      res = await this.db.query(
-        `UPDATE consultation_leads 
-         SET status = $1, updated_at = NOW() 
-         WHERE id = $2 AND deleted_at IS NULL 
-         RETURNING *`,
-        [cleanStatus, id],
-      );
-    }
-
-    if (res.rows.length === 0) {
+    const existingLeadRes = await this.db.query(
+      `SELECT * FROM consultation_leads WHERE id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
+    if (existingLeadRes.rows.length === 0) {
       throw new NotFoundException(`Không tìm thấy lead với ID ${id}`);
     }
+    const currentLead = existingLeadRes.rows[0];
+
+    const cleanStatus = (status || 'NEW').trim().toUpperCase();
+    const cleanNotes = notes !== undefined && notes !== null ? SecurityUtil.sanitizeText(notes) : currentLead.notes;
+
+    const res = await this.db.query(
+      `UPDATE consultation_leads 
+       SET status = $1, notes = $2, updated_at = NOW() 
+       WHERE id = $3 AND deleted_at IS NULL 
+       RETURNING *`,
+      [cleanStatus, cleanNotes, id],
+    );
+
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    // Ghi Audit Log khi thay đổi trạng thái Lead (BR-06)
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'UPDATE_LEAD_STATUS',
+      targetEntity: 'consultation_leads',
+      targetId: String(id),
+      details: {
+        oldStatus: currentLead.status,
+        newStatus: cleanStatus,
+        notes: cleanNotes,
+        customerName: currentLead.full_name,
+        phone: currentLead.phone,
+      },
+    });
 
     const row = res.rows[0];
     const statusMap: Record<string, string> = {
@@ -228,12 +245,36 @@ export class LeadsService {
     return { count: res.rows[0]?.count || 0 };
   }
 
-  // Xóa mềm lead
-  async delete(id: string) {
+  // Xóa mềm lead (Ghi Audit Log)
+  async delete(id: string, adminUser?: any) {
+    const existing = await this.db.query(
+      `SELECT id, full_name, phone FROM consultation_leads WHERE id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
+    if (existing.rows.length === 0) {
+      throw new NotFoundException(`Không tìm thấy lead với ID ${id}`);
+    }
+
     await this.db.query(
       `UPDATE consultation_leads SET deleted_at = NOW() WHERE id = $1`,
       [id],
     );
+
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'DELETE_LEAD',
+      targetEntity: 'consultation_leads',
+      targetId: String(id),
+      details: {
+        customerName: existing.rows[0].full_name,
+        phone: existing.rows[0].phone,
+      },
+    });
+
     return { success: true };
   }
 }
