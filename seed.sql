@@ -339,9 +339,9 @@ INSERT INTO email_templates (
 ) VALUES (
     'Email giao tài liệu sau thanh toán',
     'ORDER_PAID_RESOURCE_DELIVERY',
-    '[BrightLingo] Kích hoạt thành công khóa học: {{course_name}} (Đơn hàng #{{order_code}})',
+    '[EngNest] Kích hoạt thành công khóa học: {{course_name}} (Đơn hàng #{{order_code}})',
     '<div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px;">
-        <h2 style="color: #2563eb; margin-top: 0;">Chào mừng bạn đến với BrightLingo!</h2>
+        <h2 style="color: #2563eb; margin-top: 0;">Chào mừng bạn đến với EngNest!</h2>
         <p>Xin chào <strong>{{customer_name}}</strong>,</p>
         <p>Hệ thống đã xác nhận thanh toán thành công cho đơn hàng <strong>#{{order_code}}</strong> với số tiền <strong>{{amount_paid}}đ</strong>.</p>
         <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0; border-radius: 4px;">
@@ -364,9 +364,9 @@ INSERT INTO email_templates (
 
 -- 3. Seed Cấu hình Hệ thống cơ bản (Settings)
 INSERT INTO settings (group_name, key, value, description) VALUES
-('BRANDING', 'site_name', 'BrightLingo', 'Tên thương hiệu website'),
+('BRANDING', 'site_name', 'EngNest', 'Tên thương hiệu website'),
 ('SUPPORT', 'support_phone', '1900 8989', 'Hotline hỗ trợ học viên'),
-('SUPPORT', 'support_email', 'support@brightlingo.vn', 'Hộp thư hỗ trợ khách hàng'),
+('SUPPORT', 'support_email', 'support@engnest.vn', 'Hộp thư hỗ trợ khách hàng'),
 ('PAYMENT', 'bank_name', 'MBBANK', 'Tên ngân hàng nhận thanh toán'),
 ('PAYMENT', 'account_number', '0399046519', 'Số tài khoản nhận tiền'),
 ('PAYMENT', 'account_name', 'HA VAN MANH', 'Tên chủ tài khoản ngân hàng')
