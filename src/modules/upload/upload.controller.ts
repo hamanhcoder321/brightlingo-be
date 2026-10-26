@@ -15,6 +15,7 @@ import { randomBytes } from 'crypto';
 import type { Request } from 'express';
 import { SecurityUtil } from '@/common/security/security.util';
 import { AuthGuard } from '@/modules/auth/auth.guard';
+import { StorageService } from '@/core/storage';
 
 const ALLOWED_VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov']);
 const ALLOWED_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.svg', '.gif']);
@@ -54,6 +55,8 @@ const imageStorage = diskStorage({
 @UseGuards(AuthGuard)
 @Controller('api/upload')
 export class UploadController {
+  constructor(private readonly storageService: StorageService) {}
+
   private getPublicBaseUrl(req: Request): string {
     const configuredPublicUrl = process.env.PUBLIC_URL || process.env.BACKEND_URL;
     if (configuredPublicUrl) {
@@ -84,12 +87,36 @@ export class UploadController {
       },
     }),
   )
-  uploadVideo(@UploadedFile() file: any, @Req() req: Request) {
+  async uploadVideo(@UploadedFile() file: any, @Req() req: Request) {
     if (!file) {
       throw new BadRequestException('Không tìm thấy tệp video được tải lên.');
     }
-    const baseUrl = this.getPublicBaseUrl(req);
-    const fileUrl = `${baseUrl}/uploads/videos/${file.filename}`;
+
+    let fileUrl: string;
+
+    // Tích hợp Cloudflare R2 Object Storage bền vững (Task C1)
+    if (this.storageService.isR2Configured()) {
+      try {
+        const buffer = readFileSync(file.path);
+        const r2Key = `videos/${file.filename}`;
+        fileUrl = await this.storageService.uploadFile(
+          buffer,
+          r2Key,
+          file.mimetype || 'video/mp4',
+        );
+        // Dọn dẹp tệp tạm trên ổ đĩa server vì đã lưu trên R2
+        try {
+          unlinkSync(file.path);
+        } catch {}
+      } catch (r2Err: any) {
+        // Fallback sang local disk nếu kết nối R2 gặp sự cố
+        const baseUrl = this.getPublicBaseUrl(req);
+        fileUrl = `${baseUrl}/uploads/videos/${file.filename}`;
+      }
+    } else {
+      const baseUrl = this.getPublicBaseUrl(req);
+      fileUrl = `${baseUrl}/uploads/videos/${file.filename}`;
+    }
 
     return {
       success: true,
@@ -115,7 +142,7 @@ export class UploadController {
       },
     }),
   )
-  uploadImage(@UploadedFile() file: any, @Req() req: Request) {
+  async uploadImage(@UploadedFile() file: any, @Req() req: Request) {
     if (!file) {
       throw new BadRequestException('Không tìm thấy tệp ảnh được tải lên.');
     }
@@ -138,8 +165,31 @@ export class UploadController {
       }
     }
 
-    const baseUrl = this.getPublicBaseUrl(req);
-    const fileUrl = `${baseUrl}/uploads/images/${file.filename}`;
+    let fileUrl: string;
+
+    // Tích hợp Cloudflare R2 Object Storage bền vững (Task C1)
+    if (this.storageService.isR2Configured()) {
+      try {
+        const buffer = readFileSync(file.path);
+        const r2Key = `images/${file.filename}`;
+        fileUrl = await this.storageService.uploadFile(
+          buffer,
+          r2Key,
+          file.mimetype || 'image/jpeg',
+        );
+        // Dọn dẹp tệp tạm trên ổ đĩa server vì đã lưu trên R2
+        try {
+          unlinkSync(file.path);
+        } catch {}
+      } catch (r2Err: any) {
+        // Fallback sang local disk nếu kết nối R2 gặp sự cố
+        const baseUrl = this.getPublicBaseUrl(req);
+        fileUrl = `${baseUrl}/uploads/images/${file.filename}`;
+      }
+    } else {
+      const baseUrl = this.getPublicBaseUrl(req);
+      fileUrl = `${baseUrl}/uploads/images/${file.filename}`;
+    }
 
     return {
       success: true,
