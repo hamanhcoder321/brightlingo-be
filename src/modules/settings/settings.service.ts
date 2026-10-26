@@ -331,7 +331,7 @@ export class SettingsService {
       // 1. Branding & Payment
       site_name: map.site_name || 'EngNest',
       hotline: map.hotline || map.support_phone || '0989 898 989',
-      support_email: map.support_email || 'hotro@engnest.vn',
+      support_email: map.support_email || 'support@engnest.vn',
       working_hours: map.working_hours || '8:00–21:00 hằng ngày',
       vietqr_bank_code: map.vietqr_bank_code || map.bank_name || 'MBBANK',
       vietqr_account_number: map.vietqr_account_number || map.account_number || '0399046519',
