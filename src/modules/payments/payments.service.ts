@@ -194,7 +194,10 @@ export class PaymentsService implements OnModuleInit {
       );
 
       // Bước 5: Cập nhật đơn hàng sang PAID & Thống kê khách hàng (BR-03, BR-12)
-      if (order.status === 'PENDING') {
+      // Hỗ trợ xử lý Webhook đến trễ: Đơn hàng dù đã chuyển sang EXPIRED vẫn tự động được khôi phục sang PAID (Task H6)
+      const isPendingOrExpired = order.status === 'PENDING' || order.status === 'EXPIRED';
+      if (isPendingOrExpired) {
+        const wasExpired = order.status === 'EXPIRED';
         await client.query(
           `UPDATE orders 
            SET status = 'PAID', paid_at = NOW(), updated_at = NOW() 
@@ -227,7 +230,11 @@ export class PaymentsService implements OnModuleInit {
           );
         }
 
-        this.logger.log(`🎉 Order #${order.order_code} transitioned to PAID via PayOS!`);
+        if (wasExpired) {
+          this.logger.warn(`⚠️ Webhook đến trễ: Đơn hàng #${order.order_code} đã hết hạn trước đó, đã được tự động khôi phục sang PAID!`);
+        } else {
+          this.logger.log(`🎉 Order #${order.order_code} transitioned to PAID via PayOS!`);
+        }
       }
 
       await client.query('COMMIT');
