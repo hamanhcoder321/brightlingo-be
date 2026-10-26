@@ -361,7 +361,7 @@ export class SettingsService {
 
       // 4. SEO & Google (Task H4)
       meta_title:
-        map.meta_title || 'BrightLingo – Nền tảng học tiếng Anh online thực chiến cho mọi nhà',
+        map.meta_title || 'EngNest – Tự học tiếng Anh tại nhà',
       meta_description:
         map.meta_description ||
         'Khóa học tiếng Anh dạng video & PDF, mua một lần học trọn đời. Không cần tài khoản – thanh toán QR, nhận tài liệu qua email trong vài phút.',
