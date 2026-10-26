@@ -34,7 +34,7 @@ WHERE value LIKE '%localhost:4000%';
 UPDATE settings SET value = 'Hộ kinh doanh Giáo dục EngNest', updated_at = NOW() WHERE key = 'company_name';
 UPDATE settings SET value = 'EngNest', updated_at = NOW() WHERE key = 'site_name';
 UPDATE settings SET value = 'https://engnest.vn', updated_at = NOW() WHERE key = 'primary_domain';
-UPDATE settings SET value = 'EngNest – Tiếng Anh online cho người lớn & mẹ dạy con', updated_at = NOW() WHERE key = 'meta_title';
+UPDATE settings SET value = 'EngNest – Tự học tiếng Anh tại nhà', updated_at = NOW() WHERE key = 'meta_title';
 UPDATE settings SET value = 'hotro@engnest.vn', updated_at = NOW() WHERE key = 'support_email';
 UPDATE settings SET value = 'https://facebook.com/engnest.vn', updated_at = NOW() WHERE key = 'fanpage_url';
 UPDATE settings SET value = 'false', updated_at = NOW() WHERE key = 'noindex';

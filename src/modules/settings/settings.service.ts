@@ -355,7 +355,7 @@ export class SettingsService {
 
       // 4. SEO & Google
       meta_title:
-        map.meta_title || 'EngNest – Tiếng Anh online cho người lớn & mẹ dạy con',
+        map.meta_title || 'EngNest – Tự học tiếng Anh tại nhà',
       meta_description:
         map.meta_description ||
         'Khóa học tiếng Anh dạng video & PDF, mua một lần học trọn đời. Không cần tài khoản – thanh toán QR, nhận tài liệu qua email trong vài phút.',
