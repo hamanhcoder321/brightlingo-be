@@ -165,8 +165,8 @@ export class CoursesService {
     return fallbackName || 'Giao tiếp thực tế';
   }
 
-  // Tạo khóa học mới (Bảo mật: Validate & Làm sạch tất cả input, link ảnh/video)
-  async createCourse(data: any) {
+  // Tạo khóa học mới (Bảo mật: Validate & Làm sạch tất cả input, link ảnh/video & Ghi Audit Log)
+  async createCourse(data: any, adminUser?: any) {
     const id = data.id ? SecurityUtil.sanitizeText(data.id) : `course-${Date.now()}`;
     const rawSlug = data.slug ? SecurityUtil.sanitizeText(data.slug) : id;
     const slug = rawSlug.toLowerCase().trim();
@@ -261,6 +261,24 @@ export class CoursesService {
       JSON.stringify(benefits), JSON.stringify(curriculum), JSON.stringify(bankInfo), resourceLink, status,
       seoTitle, seoDescription, ogImage, isFeatured,
     ]);
+
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'CREATE_COURSE',
+      targetEntity: 'courses',
+      targetId: String(res.rows[0].id),
+      details: {
+        title: res.rows[0].title,
+        slug: res.rows[0].slug,
+        price: res.rows[0].price,
+        status: res.rows[0].status,
+        categoryId: res.rows[0].category_id,
+      },
+    });
 
     return this.mapToDto(res.rows[0], true);
   }
@@ -407,6 +425,37 @@ export class CoursesService {
       });
     }
 
+    // Ghi Audit Log khi thay đổi trạng thái khóa học (DRAFT <-> PUBLISHED)
+    if (data.status && String(data.status).toUpperCase() !== current.status) {
+      await this.auditService.log({
+        adminId: adminIdNum,
+        adminName: adminDisplayName,
+        action: 'CHANGE_COURSE_STATUS',
+        targetEntity: 'courses',
+        targetId: String(targetId),
+        details: {
+          oldStatus: current.status,
+          newStatus: status,
+          courseTitle: title,
+        },
+      });
+    }
+
+    // Ghi Audit Log cập nhật thông tin khóa học
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'UPDATE_COURSE',
+      targetEntity: 'courses',
+      targetId: String(targetId),
+      details: {
+        courseTitle: title,
+        slug,
+        status,
+        price,
+      },
+    });
+
     const query = `
       UPDATE courses
       SET title = $1,
@@ -471,8 +520,8 @@ export class CoursesService {
     return this.mapToDto(res.rows[0], true);
   }
 
-  // Đặt một khóa học làm khóa nổi bật duy nhất (hoặc hủy nổi bật nếu bấm lại)
-  async setFeatured(id: string) {
+  // Đặt một khóa học làm khóa nổi bật duy nhất (Ghi Audit Log)
+  async setFeatured(id: string, adminUser?: any) {
     const existing = await this.db.query(
       `SELECT id, slug, title, is_featured FROM courses WHERE (id = $1 OR slug = $1) AND deleted_at IS NULL`,
       [id],
@@ -490,18 +539,50 @@ export class CoursesService {
       await this.db.query(`UPDATE courses SET is_featured = true WHERE id = $1`, [targetId]);
     }
 
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'UPDATE_FEATURED',
+      targetEntity: 'courses',
+      targetId: String(targetId),
+      details: {
+        courseTitle: existing.rows[0].title,
+        slug: existing.rows[0].slug,
+        isFeatured: !currentlyFeatured,
+      },
+    });
+
     return this.getBySlug(targetId, true);
   }
 
-  // Xóa chỉ khóa học này (Soft delete, tuyệt đối KHÔNG đụng đến bảng categories)
-  async deleteCourse(id: string) {
+  // Xóa chỉ khóa học này (Soft delete & Ghi Audit Log)
+  async deleteCourse(id: string, adminUser?: any) {
     const res = await this.db.query(
-      `UPDATE courses SET deleted_at = NOW() WHERE (id = $1 OR slug = $1) AND deleted_at IS NULL RETURNING id, title, category_id`,
+      `UPDATE courses SET deleted_at = NOW() WHERE (id = $1 OR slug = $1) AND deleted_at IS NULL RETURNING id, title, slug, category_id`,
       [id],
     );
     if (res.rows.length === 0) {
       throw new NotFoundException(`Khóa học không tồn tại hoặc đã được xóa`);
     }
+
+    const adminIdNum = (adminUser?.id || adminUser?.sub) ? Number(adminUser.id || adminUser.sub) : undefined;
+    const adminDisplayName = adminUser?.name || adminUser?.email || 'Admin';
+
+    await this.auditService.log({
+      adminId: adminIdNum,
+      adminName: adminDisplayName,
+      action: 'DELETE_COURSE',
+      targetEntity: 'courses',
+      targetId: String(res.rows[0].id),
+      details: {
+        title: res.rows[0].title,
+        slug: res.rows[0].slug,
+      },
+    });
+
     return {
       success: true,
       message: `Đã xóa khóa học "${res.rows[0].title}". Danh mục khóa học được giữ nguyên.`,

@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Patch, Delete, Param, Query, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Post, Patch, Delete, Param, Query, Body, UseGuards, Req } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { OrdersService } from '@/modules/orders/orders.service';
 import { LeadsService } from '@/modules/leads/leads.service';
@@ -54,19 +54,20 @@ export class AdminController {
     return this.leadsService.countNew();
   }
 
-  // Cập nhật trạng thái xử lý & ghi chú tư vấn cho CMS
+  // Cập nhật trạng thái xử lý & ghi chú tư vấn cho CMS (Ghi Audit Log)
   @Patch('leads/:id')
   async updateLeadStatus(
     @Param('id') id: string,
     @Body() body: { status: string; notes?: string },
+    @Req() req: any,
   ) {
-    return this.leadsService.updateStatus(id, body.status, body.notes);
+    return this.leadsService.updateStatus(id, body.status, body.notes, req?.user);
   }
 
-  // Xóa mềm lead trong CMS
+  // Xóa mềm lead trong CMS (Ghi Audit Log)
   @Delete('leads/:id')
-  async deleteLead(@Param('id') id: string) {
-    return this.leadsService.delete(id);
+  async deleteLead(@Param('id') id: string, @Req() req: any) {
+    return this.leadsService.delete(id, req?.user);
   }
 
   // Lấy toàn bộ cài đặt hệ thống (Giao diện & Banner, SEO & Google, Ngân hàng, Liên hệ)
@@ -75,10 +76,10 @@ export class AdminController {
     return this.settingsService.getAllSettings();
   }
 
-  // Cập nhật cài đặt hệ thống từ CMS
+  // Cập nhật cài đặt hệ thống từ CMS (Ghi Audit Log)
   @Put('settings')
-  async updateSettings(@Body() body: Record<string, any>) {
-    return this.settingsService.updateSettings(body);
+  async updateSettings(@Body() body: Record<string, any>, @Req() req: any) {
+    return this.settingsService.updateSettings(body, req?.user);
   }
 
   // Tạo lại Sitemap XML và kiểm tra danh sách đường dẫn SEO
