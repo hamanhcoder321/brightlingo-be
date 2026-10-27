@@ -56,7 +56,10 @@ export class PaymentsService implements OnModuleInit {
         .trim()
         .slice(0, 25);
 
-      const frontendUrl = this.configService.get<string>('app.corsOrigins.0', 'http://localhost:3000');
+      const frontendUrl =
+        process.env.FRONTEND_URL ||
+        this.configService.get<string>('app.frontendUrl') ||
+        this.configService.get<string>('app.corsOrigins.0', 'http://localhost:3000');
 
       const paymentResponse = await this.payos.paymentRequests.create({
         orderCode: options.orderCode,
@@ -298,9 +301,15 @@ export class PaymentsService implements OnModuleInit {
     if (!this.payos) {
       throw new BadRequestException('PayOS service is not initialized');
     }
-    let targetUrl = (webhookUrl || '').trim().replace(/\/+$/, '');
+    let targetUrl = (webhookUrl || process.env.PAYOS_WEBHOOK_URL || '').trim().replace(/\/+$/, '');
     if (!targetUrl) {
-      targetUrl = 'https://brightlingo-be.onrender.com/api/webhooks/payos';
+      if (process.env.NODE_ENV === 'production') {
+        targetUrl = 'https://brightlingo-be.onrender.com/api/webhooks/payos';
+      } else {
+        throw new BadRequestException(
+          'Ở môi trường local/dev, vui lòng cung cấp webhookUrl (ví dụ URL ngrok HTTPS) hoặc cấu hình PAYOS_WEBHOOK_URL trong .env để đăng ký với PayOS. PayOS không nhận URL localhost.',
+        );
+      }
     } else if (targetUrl.endsWith('/webhooks/payos')) {
       if (!targetUrl.endsWith('/api/webhooks/payos')) {
         targetUrl = targetUrl.replace(/\/webhooks\/payos$/, '/api/webhooks/payos');

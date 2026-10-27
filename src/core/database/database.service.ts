@@ -16,10 +16,20 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const user = this.configService.get<string>('database.user', 'postgres');
     const password = this.configService.get<string>('database.password', 'admin');
     const database = this.configService.get<string>('database.name', 'brightlingo_db');
-    const useSsl =
-      process.env.DB_SSL === 'true' ||
-      (connectionString && connectionString.includes('sslmode=')) ||
-      (host !== 'localhost' && host !== '127.0.0.1');
+
+    // Phân tách rõ ràng giữa cấu hình Local và Production / Cloud Database
+    const isExplicitSsl = process.env.DB_SSL !== undefined;
+    const useSsl = isExplicitSsl
+      ? process.env.DB_SSL === 'true'
+      : Boolean(
+          (connectionString && (connectionString.includes('sslmode=require') || connectionString.includes('ssl=true'))) ||
+          (!connectionString && host !== 'localhost' && host !== '127.0.0.1'),
+        );
+
+    const isCloudDb = Boolean(
+      (connectionString && !connectionString.includes('localhost') && !connectionString.includes('127.0.0.1')) ||
+      (host !== 'localhost' && host !== '127.0.0.1'),
+    );
 
     this.pool = connectionString
       ? new Pool({
@@ -41,7 +51,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           connectionTimeoutMillis: 5000,
         });
 
-    this.logger.log(`PostgreSQL Pool initialized (${connectionString ? 'DATABASE_URL' : `${host}:${port}/${database}`})`);
+    const modeLabel = isCloudDb ? 'REMOTE/CLOUD' : 'LOCAL';
+    this.logger.log(`PostgreSQL Pool initialized [Mode: ${modeLabel}] (${connectionString ? (isCloudDb ? 'Cloud DATABASE_URL' : 'Local DATABASE_URL') : `${host}:${port}/${database}`}, SSL: ${useSsl})`);
+
+    if (isCloudDb && process.env.NODE_ENV !== 'production') {
+      this.logger.warn(`⚠️ CẢNH BÁO: Đang chạy ở môi trường development (${process.env.NODE_ENV || 'local'}) nhưng kết nối tới CSDL Cloud/Remote! Mọi thay đổi dữ liệu sẽ ảnh hưởng trực tiếp tới hệ thống Cloud.`);
+    }
   }
 
   async query<T extends QueryResultRow = any>(text: string, params?: any[]): Promise<QueryResult<T>> {

@@ -651,7 +651,14 @@ export class CoursesService {
 
   private normalizeMediaUrl(url?: string): string {
     if (!url) return '';
-    const publicUrl = (process.env.PUBLIC_URL || process.env.BACKEND_URL || 'https://brightlingo-be.onrender.com').trim().replace(/\/+$/, '');
+    const defaultUrl =
+      process.env.NODE_ENV === 'production'
+        ? 'https://brightlingo-be.onrender.com'
+        : 'http://localhost:4000';
+    const publicUrl = (process.env.PUBLIC_URL || process.env.BACKEND_URL || defaultUrl).trim().replace(/\/+$/, '');
+    if (publicUrl.includes('localhost') || publicUrl.includes('127.0.0.1')) {
+      return url;
+    }
     return url.replace(/https?:\/\/(localhost|127\.0\.0\.1):4000\/uploads\//g, `${publicUrl}/uploads/`);
   }
 

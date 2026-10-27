@@ -366,8 +366,16 @@ INSERT INTO email_templates (
 INSERT INTO settings (group_name, key, value, description) VALUES
 ('BRANDING', 'site_name', 'EngNest', 'Tên thương hiệu website'),
 ('SUPPORT', 'support_phone', '1900 8989', 'Hotline hỗ trợ học viên'),
-('SUPPORT', 'support_email', 'support@engnest.vn', 'Hộp thư hỗ trợ khách hàng'),
+('SUPPORT', 'support_email', 'hotro@engnest.vn', 'Hộp thư hỗ trợ khách hàng'),
 ('PAYMENT', 'bank_name', 'MBBANK', 'Tên ngân hàng nhận thanh toán'),
 ('PAYMENT', 'account_number', '0399046519', 'Số tài khoản nhận tiền'),
 ('PAYMENT', 'account_name', 'HA VAN MANH', 'Tên chủ tài khoản ngân hàng')
 ON CONFLICT (key) DO NOTHING;
+
+-- 4. Seed Trang Chính sách & Điều khoản (Pages)
+INSERT INTO pages (title, slug, content, seo_title, seo_description, status) VALUES
+('Chính sách thanh toán', 'chinh-sach-thanh-toan', 'Chính sách thanh toán qua chuyển khoản ngân hàng VietQR tự động và bảo mật.', 'Chính sách thanh toán – EngNest', 'Quy định thanh toán an toàn qua VietQR và đối soát tự động.', 'PUBLISHED'),
+('Chính sách giao nhận tài liệu số', 'chinh-sach-giao-nhan-tai-lieu', 'Tài liệu học tập số dạng Video & Ebook được gửi tự động qua email ngay sau khi thanh toán thành công.', 'Chính sách giao nhận tài liệu – EngNest', 'Hướng dẫn nhận tài liệu khóa học qua email tức thì.', 'PUBLISHED'),
+('Chính sách bảo mật thông tin', 'chinh-sach-bao-mat', 'Cam kết bảo mật 100% thông tin cá nhân của học viên theo tiêu chuẩn.', 'Chính sách bảo mật – EngNest', 'Chính sách bảo mật thông tin học viên EngNest.', 'PUBLISHED'),
+('Chính sách hoàn tiền & Hỗ trợ học tập', 'chinh-sach-hoan-tien', 'Chính sách hỗ trợ đổi khóa học hoặc hoàn tiền trong vòng 7 ngày nếu tài liệu bị lỗi kỹ thuật không thể khắc phục.', 'Chính sách hoàn tiền – EngNest', 'Chính sách hoàn tiền và đổi trả khóa học EngNest.', 'PUBLISHED')
+ON CONFLICT (slug) DO NOTHING;

@@ -29,8 +29,8 @@ export class PaymentsController {
     const isTargetProduction =
       switchEnvDto.target === 'prod' || switchEnvDto.target === 'production';
     const resolvedWebhookUrl = isTargetProduction
-      ? 'https://brightlingo-be.onrender.com/api/webhooks/payos'
-      : (switchEnvDto.url || '');
+      ? (process.env.PROD_WEBHOOK_URL || 'https://brightlingo-be.onrender.com/api/webhooks/payos')
+      : (switchEnvDto.url || process.env.PAYOS_WEBHOOK_URL || '');
     return this.paymentsService.confirmWebhook(resolvedWebhookUrl);
   }
 

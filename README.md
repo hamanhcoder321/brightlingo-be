@@ -1,6 +1,9 @@
-# BrightLingo API | Hệ Thống Bán Khóa Học & Tài Liệu Trực Tuyến (MVP 1.0)
+# EngNest API | Hệ Thống Bán Khóa Học & Tài Liệu Trực Tuyến (MVP 1.0)
 
-Backend API phục vụ nền tảng thương mại điện tử khóa học & tài nguyên số **BrightLingo / WowUp**, tuân thủ đặc tả nghiệp vụ **BA Spec MVP 1.0**. Hệ thống xây dựng trên nền tảng **NestJS**, tích hợp **PostgreSQL** tối ưu truy vấn qua Connection Pool, tích hợp cổng thanh toán tự động **PayOS (VietQR Pro)** và dịch vụ chuyển phát email tài nguyên số.
+Backend API phục vụ nền tảng thương mại điện tử khóa học & tài nguyên số **EngNest** (https://engnest.vn), tuân thủ đặc tả nghiệp vụ **BA Spec MVP 1.0**. Hệ thống xây dựng trên nền tảng **NestJS**, tích hợp **PostgreSQL** tối ưu truy vấn qua Connection Pool, tích hợp cổng thanh toán tự động **PayOS (VietQR Pro)** và dịch vụ chuyển phát email tài nguyên số.
+
+> **Lưu ý quan trọng cho Developer clone về:**
+> Mặc định mã nguồn được cấu hình để chạy **100% chế độ Local độc lập**. Toàn bộ dữ liệu, file upload, email đều được cô lập tại máy cá nhân, không ảnh hưởng tới dữ liệu Production (Neon Cloud / Cloudflare R2 / Render).
 
 ---
 
@@ -116,14 +119,22 @@ MAIL_FROM=support@brightlingo.vn
 
 ## 🚀 Hướng Dẫn Khởi Chạy Dự Án
 
-### 1. Khởi tạo Cơ sở dữ liệu
-- Tạo database `brightlingo_db` trong PostgreSQL (qua pgAdmin 4 hoặc Terminal).
-- Mở file `seed.sql` và thực thi (Execute / F5) để tạo đủ 14 bảng và nạp dữ liệu mẫu ban đầu.
-
-### 2. Cài đặt thư viện
+### 1. Cài đặt thư viện & Cấu hình môi trường
 ```bash
+# Cài đặt thư viện
 npm install
+
+# Sao chép cấu hình local
+cp .env.example .env
 ```
+
+### 2. Khởi tạo Cơ sở dữ liệu Local
+- Tạo database `brightlingo_db` trong PostgreSQL (qua pgAdmin 4 hoặc `psql -U postgres`).
+- Chạy lệnh tự động nạp bảng và dữ liệu mẫu:
+```bash
+npm run db:setup
+```
+*(Lệnh này tự động thực thi `seed.sql` tạo 16 bảng, khóa học, dữ liệu mẫu và các trang chính sách pháp lý).*
 
 ### 3. Chạy ở môi trường Development
 ```bash
