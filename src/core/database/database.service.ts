@@ -10,7 +10,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    const connectionString = process.env.DATABASE_URL;
+    const rawUrl =
+      process.env.DATABASE_URL ||
+      this.configService.get<string>('database.url') ||
+      this.configService.get<string>('DATABASE_URL');
+    const connectionString = rawUrl ? rawUrl.trim().replace(/^["']|["']$/g, '') : undefined;
+
     const host = this.configService.get<string>('database.host', 'localhost');
     const port = this.configService.get<number>('database.port', 5432);
     const user = this.configService.get<string>('database.user', 'postgres');
@@ -22,7 +27,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const useSsl = isExplicitSsl
       ? process.env.DB_SSL === 'true'
       : Boolean(
-          (connectionString && (connectionString.includes('sslmode=require') || connectionString.includes('ssl=true'))) ||
+          (connectionString && (connectionString.includes('sslmode=require') || connectionString.includes('ssl=true') || connectionString.includes('neon.tech'))) ||
           (!connectionString && host !== 'localhost' && host !== '127.0.0.1'),
         );
 
@@ -37,7 +42,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           ssl: useSsl ? { rejectUnauthorized: false } : false,
           max: 20,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 5000,
+          connectionTimeoutMillis: 10000,
         })
       : new Pool({
           host,
