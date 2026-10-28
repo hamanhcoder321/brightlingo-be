@@ -119,14 +119,27 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const totalAmount = Math.max(0, unitPrice - discountAmount);
     const orderId = 'ord_' + Date.now();
     // Sinh số mã đơn nguyên dương duy nhất tương thích 100% với PayOS
-    const numericOrderCode = Math.floor(Date.now() / 1000);
-    const orderCodeStr = String(numericOrderCode);
+    const numericOrderCode = 100000 + (Math.floor(Date.now() / 1000) % 900000);
+    const orderCodeStr = `EN-${numericOrderCode}`;
 
     const cleanCustomerName = SecurityUtil.sanitizeText(createOrderDto.customerName);
     const cleanCustomerEmail = SecurityUtil.sanitizeText(createOrderDto.customerEmail).toLowerCase().trim();
     const cleanCustomerPhone = createOrderDto.customerPhone ? SecurityUtil.sanitizeText(createOrderDto.customerPhone) : null;
     const cleanLandingUrl = createOrderDto.landingUrl ? SecurityUtil.sanitizeUrl(createOrderDto.landingUrl, 'Landing URL') : null;
     const cleanReferrerUrl = createOrderDto.referrerUrl ? SecurityUtil.sanitizeUrl(createOrderDto.referrerUrl, 'Referrer URL') : null;
+
+    const isIgnoredAttributionHost = (val?: string | null) => {
+      if (!val) return false;
+      const v = val.toLowerCase().trim();
+      return ['vercel.com', 'vercel.app', 'onrender.com', 'render.com', 'localhost', '127.0.0.1'].some((h) => v.includes(h));
+    };
+
+    const cleanUtmSource = (createOrderDto.utmSource && !isIgnoredAttributionHost(createOrderDto.utmSource))
+      ? SecurityUtil.sanitizeText(createOrderDto.utmSource)
+      : null;
+    const cleanUtmMedium = (createOrderDto.utmMedium && !isIgnoredAttributionHost(createOrderDto.utmMedium) && !isIgnoredAttributionHost(createOrderDto.utmSource))
+      ? SecurityUtil.sanitizeText(createOrderDto.utmMedium)
+      : null;
 
     // 3. Lưu đơn hàng vào Database (Snapshot giá & Attribution theo BR-07, BR-08, BR-09)
     await this.db.query(
@@ -148,8 +161,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         targetCourse.id, targetCourse.title, targetCourse.slug, originalPrice, unitPrice,
         discountAmount, totalAmount, couponId, couponCode,
         createOrderDto.ref ? SecurityUtil.sanitizeText(createOrderDto.ref) : null,
-        createOrderDto.utmSource ? SecurityUtil.sanitizeText(createOrderDto.utmSource) : null,
-        createOrderDto.utmMedium ? SecurityUtil.sanitizeText(createOrderDto.utmMedium) : null,
+        cleanUtmSource,
+        cleanUtmMedium,
         createOrderDto.utmCampaign ? SecurityUtil.sanitizeText(createOrderDto.utmCampaign) : null,
         createOrderDto.utmContent ? SecurityUtil.sanitizeText(createOrderDto.utmContent) : null,
         createOrderDto.utmTerm ? SecurityUtil.sanitizeText(createOrderDto.utmTerm) : null,
@@ -161,7 +174,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const paymentInfo = await this.paymentsService.createPaymentLink({
       orderCode: numericOrderCode,
       amount: totalAmount,
-      description: `BL ${orderCodeStr}`,
+      description: orderCodeStr.replace("-", " "),
       items: [
         {
           name: targetCourse.title.slice(0, 50),
@@ -192,8 +205,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const orderQueryResult = await this.db.query(
       `SELECT id, order_code, status, total_amount, paid_at, customer_email, customer_name, created_at 
        FROM orders 
-       WHERE id = $1 OR order_code = $1 OR order_code = $2`,
-      [orderIdOrCode, orderIdOrCode.replace(/^BL-/, '')],
+       WHERE id = $1 OR order_code = $1 OR order_code = $2 OR order_code = $3`,
+      [orderIdOrCode, orderIdOrCode.replace(/^(BL|EN)-/, ''), `EN-${orderIdOrCode.replace(/^(BL|EN)-/, '')}`],
     );
 
     if (orderQueryResult.rows.length === 0) {

@@ -155,8 +155,8 @@ export class PaymentsService implements OnModuleInit {
     const orderRes = await this.db.query(
       `SELECT id, order_code, total_amount, status, customer_email, customer_name, customer_phone, coupon_id 
        FROM orders 
-       WHERE order_code = $1 OR order_code = $2`,
-      [orderCodeStr, `BL-${orderCodeStr}`],
+       WHERE order_code = $1 OR order_code = $2 OR order_code = $3`,
+      [orderCodeStr, `BL-${orderCodeStr}`, `EN-${orderCodeStr}`],
     );
 
     if (orderRes.rows.length === 0) {

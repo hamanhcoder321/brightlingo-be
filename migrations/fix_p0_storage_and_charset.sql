@@ -5,6 +5,9 @@
 
 BEGIN;
 
+-- Đảm bảo cột updated_at tồn tại trong bảng courses
+ALTER TABLE courses ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+
 -- 1. Sửa lỗi mã hóa tiếng Việt tên khóa học course-com-5 (Task H5)
 UPDATE courses 
 SET title = 'Nghệ thuật Small Talk & Giao tiếp tự nhiên tại Nhà hàng, Cafe',

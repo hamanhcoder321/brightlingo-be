@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Body } from '@nestjs/common';
 import { SettingsService } from './settings.service';
 
-@Controller('api/settings')
+@Controller(['api/settings', 'api/admin/settings', 'admin/settings'])
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
@@ -10,7 +10,7 @@ export class SettingsController {
     return this.settingsService.getPublicSettings();
   }
 
-  @Get('all')
+  @Get(['all', ''])
   async getAllSettings() {
     return this.settingsService.getAllSettings();
   }
@@ -20,7 +20,7 @@ export class SettingsController {
     return this.settingsService.updateSettings(body);
   }
 
-  @Post('regenerate-sitemap')
+  @Post(['regenerate-sitemap', 'regenerate'])
   async regenerateSitemap() {
     return this.settingsService.regenerateSitemap();
   }

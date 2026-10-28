@@ -41,14 +41,29 @@ export class LeadsService {
     const cleanLandingUrl = dto.landingUrl ? SecurityUtil.sanitizeText(dto.landingUrl) : null;
     const cleanReferrerUrl = dto.referrerUrl ? SecurityUtil.sanitizeText(dto.referrerUrl) : null;
 
+    const isIgnoredHost = (val?: string | null) => {
+      if (!val) return false;
+      const v = val.toLowerCase().trim();
+      return ['vercel.com', 'vercel.app', 'onrender.com', 'render.com', 'localhost', '127.0.0.1'].some((h) => v.includes(h));
+    };
+
     // Xác định chính xác nguồn trang gửi thông tin
     let pageSource = dto.source ? SecurityUtil.sanitizeText(dto.source) : null;
-    if (!pageSource) {
+    if (!pageSource || isIgnoredHost(pageSource)) {
       if (cleanLandingUrl) {
-        if (cleanLandingUrl.includes('/register') || cleanLandingUrl.includes('/dang-ky')) {
+        const lowerUrl = cleanLandingUrl.toLowerCase();
+        if (lowerUrl.includes('/register') || lowerUrl.includes('/dang-ky')) {
           pageSource = 'Trang đăng ký';
-        } else if (cleanLandingUrl.includes('/khoa-hoc')) {
+        } else if (lowerUrl.includes('/khoa-hoc/') && lowerUrl.split('/khoa-hoc/')[1]?.length > 1) {
+          pageSource = 'Chi tiết khóa học';
+        } else if (lowerUrl.includes('/khoa-hoc')) {
           pageSource = 'Trang khóa học';
+        } else if (lowerUrl.includes('/danh-gia')) {
+          pageSource = 'Trang đánh giá';
+        } else if (lowerUrl.includes('/loi-ich')) {
+          pageSource = 'Trang lợi ích';
+        } else if (lowerUrl.includes('/lien-he')) {
+          pageSource = 'Trang liên hệ';
         } else {
           pageSource = 'Trang chủ';
         }
@@ -59,7 +74,7 @@ export class LeadsService {
 
     // Chuẩn hóa nguồn đầu vào (Ưu tiên: Chiến dịch Marketing > Ref > Nguồn trang cụ thể)
     let cleanUtmSource: string = pageSource;
-    if (dto.utmSource && dto.utmSource.trim()) {
+    if (dto.utmSource && dto.utmSource.trim() && !isIgnoredHost(dto.utmSource)) {
       const raw = dto.utmSource.trim().toLowerCase();
       if (raw === 'facebook' || raw === 'fb') {
         cleanUtmSource = 'Facebook';
@@ -78,9 +93,13 @@ export class LeadsService {
       }
     } else if (cleanRef) {
       cleanUtmSource = `Ref: ${cleanRef}`;
+    } else {
+      cleanUtmSource = pageSource;
     }
 
-    const cleanUtmMedium = dto.utmMedium ? SecurityUtil.sanitizeText(dto.utmMedium) : 'website_form';
+    const cleanUtmMedium = (!isIgnoredHost(dto.utmSource) && dto.utmMedium && !isIgnoredHost(dto.utmMedium))
+      ? SecurityUtil.sanitizeText(dto.utmMedium)
+      : (cleanUtmSource !== pageSource ? 'campaign' : 'website_form');
     const cleanUtmCampaign = dto.utmCampaign ? SecurityUtil.sanitizeText(dto.utmCampaign) : null;
 
     const res = await this.db.query(

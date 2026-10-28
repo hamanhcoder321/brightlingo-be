@@ -665,10 +665,30 @@ export class CoursesService {
   private mapToDto(row: any, isAdmin: boolean = false) {
     const isFeatured = Boolean(row.is_featured);
     const rawCurriculum = typeof row.curriculum === 'object' && row.curriculum !== null ? row.curriculum : {};
-    const formatSummary = rawCurriculum.summary || row.tag_badge || '32 video · 6 PDF · Audio';
     const shortDescription = rawCurriculum.description || row.tag_badge || row.title;
+    const rawSummary = rawCurriculum.summary || '';
+    const isFormatString =
+      rawSummary &&
+      rawSummary !== shortDescription &&
+      (/[•·]/.test(rawSummary) || /\b(video|pdf|audio|phần|bài|ebook)\b/i.test(rawSummary)) &&
+      rawSummary.length <= 75;
+    const sectionsCount = Array.isArray(rawCurriculum.sections) ? rawCurriculum.sections.length : 0;
+    const formatSummary = isFormatString
+      ? rawSummary
+      : sectionsCount > 0
+      ? `${sectionsCount} phần học • Video HD & Ebook PDF`
+      : 'Video bài giảng HD • Ebook PDF & Audio';
     const totalDuration = rawCurriculum.totalDuration || row.video_demo_duration || '9 giờ';
     const courseFaqs = Array.isArray(rawCurriculum.faqs) ? rawCurriculum.faqs : [];
+    const actualBuyers = row.buyers_count !== undefined ? parseInt(row.buyers_count, 10) : 0;
+    const isSocialProofEnabled = row.is_social_proof_enabled !== false;
+    const displayStudentsCount = !isSocialProofEnabled
+      ? ''
+      : actualBuyers >= 10
+      ? `${actualBuyers}+ học viên đã đăng ký`
+      : row.students_count && !String(row.students_count).includes('8.500+')
+      ? row.students_count
+      : '';
 
     const normalizedImage = this.normalizeMediaUrl(row.image);
     const normalizedVideoUrl = this.normalizeMediaUrl(row.video_url);
@@ -686,7 +706,7 @@ export class CoursesService {
       duration: totalDuration,
       rating: parseFloat(row.rating || 5.0),
       reviewsCount: row.reviews_count,
-      studentsCount: row.students_count,
+      studentsCount: displayStudentsCount,
       status: row.status || 'PUBLISHED',
       lastUpdated: row.last_updated,
       price: row.price,
@@ -708,7 +728,7 @@ export class CoursesService {
       seoTitle: row.seo_title || row.title,
       seoDescription: row.seo_description || shortDescription || '',
       ogImage: normalizedOgImage,
-      meta: formatSummary.split('•')[0].trim(),
+      meta: (formatSummary.split(/[•·]/)[0] || '').trim().slice(0, 28) || (row.type_badge || 'Video + PDF'),
       highlights: Array.isArray(row.benefits) ? row.benefits.map((b: any) => b.title) : [],
       isFeatured,
       badge: isFeatured
