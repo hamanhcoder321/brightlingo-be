@@ -20,9 +20,10 @@ export class ApplyCouponDto {
   @IsNotEmpty()
   courseId: string;
 
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  originalPrice: number;
+  originalPrice?: number;
 }
 
 export class CreateCouponDto {

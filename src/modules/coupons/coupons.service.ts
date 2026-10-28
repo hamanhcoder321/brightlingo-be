@@ -23,7 +23,7 @@ export class CouponsService {
 
     // Lấy thông tin khóa học từ Database để đảm bảo tính toàn vẹn giá (Source of Truth)
     const courseQueryResult = await this.databaseService.query(
-      `SELECT id, title, price, original_price FROM courses WHERE id = $1 AND status = 'PUBLISHED' AND deleted_at IS NULL`,
+      `SELECT id, title, price, original_price FROM courses WHERE (id = $1 OR slug = $1) AND status = 'PUBLISHED' AND deleted_at IS NULL`,
       [courseId],
     );
     if (courseQueryResult.rows.length === 0) {
@@ -56,8 +56,8 @@ export class CouponsService {
     // Kiểm tra phạm vi áp dụng (scope = SPECIFIC thì khóa học phải nằm trong coupon_courses)
     if (activeCoupon.scope === 'SPECIFIC') {
       const courseScopeQueryResult = await this.databaseService.query(
-        `SELECT id FROM coupon_courses WHERE coupon_id = $1 AND course_id = $2`,
-        [activeCoupon.id, courseId],
+        `SELECT id FROM coupon_courses WHERE coupon_id = $1 AND (course_id = $2 OR course_id = $3)`,
+        [activeCoupon.id, courseId, targetCourse.id],
       );
       if (courseScopeQueryResult.rows.length === 0) {
         throw new BadRequestException('Mã giảm giá này không áp dụng cho khóa học bạn đang chọn');
