@@ -96,28 +96,52 @@ export class MailService {
     options: SendMailOptions,
     config: { host: string; port: number; secure: boolean; user: string; pass: string; from: string },
   ): Promise<{ messageId: string }> {
-    if (!this.smtpTransporter) {
-      this.smtpTransporter = nodemailer.createTransport({
+    const cleanPass = config.pass.replace(/\s+/g, '');
+    const cleanUser = config.user.trim();
+
+    const createTransport = (port: number, secure: boolean) => {
+      return nodemailer.createTransport({
         host: config.host,
-        port: config.port,
-        secure: config.secure,
+        port,
+        secure,
         auth: {
-          user: config.user,
-          pass: config.pass,
+          user: cleanUser,
+          pass: cleanPass,
         },
+        connectionTimeout: 6000,
+        greetingTimeout: 5000,
+        socketTimeout: 8000,
       });
+    };
+
+    try {
+      const transporter = createTransport(config.port, config.secure || config.port === 465);
+      const info = await transporter.sendMail({
+        from: config.from,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+      });
+
+      this.logger.log(`✅ [MailService] Đã gửi email thành công qua SMTP (${config.host}:${config.port})! ID: ${info.messageId}`);
+      return { messageId: info.messageId || 'smtp_' + Date.now() };
+    } catch (err: any) {
+      this.logger.warn(`[MailService] Thử SMTP cổng ${config.port} thất bại: ${err?.message}. Đang thử cổng SSL 465 dự phòng...`);
+      if (config.port !== 465) {
+        const fallbackTransporter = createTransport(465, true);
+        const info = await fallbackTransporter.sendMail({
+          from: config.from,
+          to: options.to,
+          subject: options.subject,
+          html: options.html,
+          text: options.text,
+        });
+        this.logger.log(`✅ [MailService] Đã gửi email thành công qua SMTP SSL port 465! ID: ${info.messageId}`);
+        return { messageId: info.messageId || 'smtp_465_' + Date.now() };
+      }
+      throw err;
     }
-
-    const info = await this.smtpTransporter.sendMail({
-      from: config.from,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text,
-    });
-
-    this.logger.log(`✅ [MailService] Đã gửi email thành công qua SMTP! MessageId: ${info.messageId}`);
-    return { messageId: info.messageId || 'smtp_' + Date.now() };
   }
 
   // Phương thức gửi qua Resend REST API (Khi domain engnest.vn đã active DNS)
