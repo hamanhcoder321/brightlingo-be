@@ -207,7 +207,7 @@ export class CoursesService {
     const resourceLink = SecurityUtil.sanitizeUrl(data.resourceLink || data.resource_link || '', 'Link tài liệu');
     const ogImage = SecurityUtil.sanitizeUrl(data.ogImage || data.og_image || image, 'Ảnh chia sẻ mạng xã hội');
 
-    const status = (data.status || 'PUBLISHED').toUpperCase();
+    const status = (data.status || 'DRAFT').toUpperCase();
     const seoTitle = SecurityUtil.sanitizeText(data.seoTitle || data.seo_title || title);
     const seoDescription = SecurityUtil.sanitizeText(data.seoDescription || data.seo_description || shortDescription);
     
@@ -231,7 +231,7 @@ export class CoursesService {
       sections: Array.isArray(sanitizedCurriculum?.sections) ? sanitizedCurriculum.sections : [],
     };
 
-    const bankInfo = data.bankInfo || { bankName: 'MBBANK', accountName: 'HA VAN MANH', accountNumber: '0399046519', orderCodePrefix: 'BL' };
+    const bankInfo = data.bankInfo || { bankName: 'MBBANK', accountName: 'HA VAN MANH', accountNumber: '0399046519', orderCodePrefix: 'EN' };
 
     const isFeatured = Boolean(data.isFeatured ?? data.is_featured ?? false);
     if (isFeatured) {
