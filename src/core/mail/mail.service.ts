@@ -30,34 +30,37 @@ export class MailService {
 
     const hasSmtp = Boolean(smtpUser && smtpPass);
     const hasResend = Boolean(resendApiKey);
-    const isResendSandbox = fromEmail.includes('onboarding@resend.dev');
 
-    // 1. Nếu cấu hình SMTP (ví dụ Gmail / Google Workspace) VÀ Resend vẫn đang ở Sandbox (chưa active domain engnest):
-    // Ưu tiên gửi ngay qua SMTP để khách hàng thật nhận được 100%
-    if (hasSmtp && (!hasResend || isResendSandbox)) {
-      try {
-        this.logger.log(`[MailService] Sử dụng máy chủ SMTP (${smtpHost}) để gửi email tới người mua...`);
-        return await this.sendViaSmtp(options, {
-          host: smtpHost,
-          port: smtpPort,
-          secure: smtpSecure,
-          user: smtpUser!,
-          pass: smtpPass!,
-          from: fromEmail.includes('@') && !isResendSandbox ? fromEmail : `EngNest <${smtpUser}>`,
-        });
-      } catch (smtpErr: any) {
-        this.logger.error(`[MailService] Gửi qua SMTP thất bại: ${smtpErr?.message || smtpErr}. Đang thử phương án dự phòng...`);
-      }
+    // Kiểm tra xem From có phải là email cá nhân (Gmail/Yahoo/Outlook) hoặc Sandbox hay không
+    const isPublicEmailProvider =
+      fromEmail.includes('@gmail.com') ||
+      fromEmail.includes('@yahoo.') ||
+      fromEmail.includes('@outlook.') ||
+      fromEmail.includes('@hotmail.') ||
+      fromEmail.includes('onboarding@resend.dev');
+
+    // 1. Nếu địa chỉ gửi là Gmail cá nhân HOẶC Resend chưa có domain:
+    // BẮT BUỘC gửi qua SMTP Gmail (Resend không cho phép gửi bằng đuôi @gmail.com)
+    if (hasSmtp && (isPublicEmailProvider || !hasResend)) {
+      this.logger.log(`[MailService] Người gửi là Gmail (${fromEmail}) -> Gửi trực tiếp qua Gmail SMTP...`);
+      return await this.sendViaSmtp(options, {
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        user: smtpUser!,
+        pass: smtpPass!,
+        from: fromEmail.includes('<') ? fromEmail : `EngNest <${smtpUser}>`,
+      });
     }
 
-    // 2. Khi domain engnest đã được Verify trên Resend (hoặc khi chỉ cấu hình Resend)
-    if (hasResend) {
+    // 2. Khi domain riêng engnest.vn đã kích hoạt trên Resend (fromEmail là @engnest.vn)
+    if (hasResend && !isPublicEmailProvider) {
       try {
-        this.logger.log(`[MailService] Sử dụng Resend API (From: ${fromEmail}) để gửi email...`);
+        this.logger.log(`[MailService] Sử dụng Resend API (Domain: ${fromEmail}) để gửi email...`);
         return await this.sendViaResend(options, resendApiKey!, fromEmail);
       } catch (resendErr: any) {
         this.logger.error(`[MailService] Gửi qua Resend thất bại: ${resendErr?.message || resendErr}`);
-        // Tự động Fallback sang SMTP nếu có cấu hình
+        // Fallback tự động sang SMTP nếu có cấu hình
         if (hasSmtp) {
           this.logger.warn(`[MailService] Tự động chuyển tiếp sang SMTP gửi dự phòng...`);
           return await this.sendViaSmtp(options, {
@@ -66,14 +69,14 @@ export class MailService {
             secure: smtpSecure,
             user: smtpUser!,
             pass: smtpPass!,
-            from: fromEmail.includes('@') && !isResendSandbox ? fromEmail : `EngNest <${smtpUser}>`,
+            from: `EngNest <${smtpUser}>`,
           });
         }
         throw resendErr;
       }
     }
 
-    // 3. Nếu chỉ cấu hình SMTP
+    // 3. Fallback SMTP
     if (hasSmtp) {
       return await this.sendViaSmtp(options, {
         host: smtpHost,
@@ -81,67 +84,68 @@ export class MailService {
         secure: smtpSecure,
         user: smtpUser!,
         pass: smtpPass!,
-        from: fromEmail.includes('@') && !isResendSandbox ? fromEmail : `EngNest <${smtpUser}>`,
+        from: fromEmail.includes('<') ? fromEmail : `EngNest <${smtpUser}>`,
       });
     }
 
-    // 4. Môi trường Local dev khi chưa điền thông tin gửi mail
+    // 4. Fallback Resend Sandbox nếu không có SMTP
+    if (hasResend) {
+      return await this.sendViaResend(options, resendApiKey!, fromEmail);
+    }
+
+    // 5. Mock môi trường dev
     const mockId = 'mock_msg_' + Date.now();
-    this.logger.warn(`[MailService] Chưa cấu hình SMTP hoặc RESEND_API_KEY. Giả lập gửi mail thành công (Mock ID: ${mockId})`);
+    this.logger.warn(`[MailService] Chưa cấu hình SMTP hoặc RESEND_API_KEY. Mock ID: ${mockId}`);
     return { messageId: mockId };
   }
 
-  // Phương thức gửi qua SMTP (Gmail, Google Workspace, Mail server riêng)
+  // Phương thức gửi qua SMTP (Gmail tối ưu hoặc máy chủ SMTP riêng)
   private async sendViaSmtp(
     options: SendMailOptions,
     config: { host: string; port: number; secure: boolean; user: string; pass: string; from: string },
   ): Promise<{ messageId: string }> {
     const cleanPass = config.pass.replace(/\s+/g, '');
     const cleanUser = config.user.trim();
+    const isGmail = config.host.includes('gmail') || cleanUser.endsWith('@gmail.com');
 
-    const createTransport = (port: number, secure: boolean) => {
-      return nodemailer.createTransport({
-        host: config.host,
-        port,
-        secure,
-        auth: {
-          user: cleanUser,
-          pass: cleanPass,
-        },
-        connectionTimeout: 6000,
-        greetingTimeout: 5000,
-        socketTimeout: 8000,
-      });
-    };
+    if (!this.smtpTransporter) {
+      const transportConfig: any = isGmail
+        ? {
+            service: 'gmail',
+            auth: {
+              user: cleanUser,
+              pass: cleanPass,
+            },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
+          }
+        : {
+            host: config.host,
+            port: config.port,
+            secure: config.port === 465 || config.secure,
+            auth: {
+              user: cleanUser,
+              pass: cleanPass,
+            },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
+          };
 
-    try {
-      const transporter = createTransport(config.port, config.secure || config.port === 465);
-      const info = await transporter.sendMail({
-        from: config.from,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      });
-
-      this.logger.log(`✅ [MailService] Đã gửi email thành công qua SMTP (${config.host}:${config.port})! ID: ${info.messageId}`);
-      return { messageId: info.messageId || 'smtp_' + Date.now() };
-    } catch (err: any) {
-      this.logger.warn(`[MailService] Thử SMTP cổng ${config.port} thất bại: ${err?.message}. Đang thử cổng SSL 465 dự phòng...`);
-      if (config.port !== 465) {
-        const fallbackTransporter = createTransport(465, true);
-        const info = await fallbackTransporter.sendMail({
-          from: config.from,
-          to: options.to,
-          subject: options.subject,
-          html: options.html,
-          text: options.text,
-        });
-        this.logger.log(`✅ [MailService] Đã gửi email thành công qua SMTP SSL port 465! ID: ${info.messageId}`);
-        return { messageId: info.messageId || 'smtp_465_' + Date.now() };
-      }
-      throw err;
+      this.smtpTransporter = nodemailer.createTransport(transportConfig);
     }
+
+    const info = await this.smtpTransporter.sendMail({
+      from: config.from,
+      to: options.to,
+      subject: options.subject,
+      html: options.html,
+      text: options.text,
+    });
+
+    this.logger.log(`✅ [MailService] Đã gửi email thành công qua SMTP (${isGmail ? 'Gmail Service' : config.host})! ID: ${info.messageId}`);
+    return { messageId: info.messageId || 'smtp_' + Date.now() };
   }
 
   // Phương thức gửi qua Resend REST API (Khi domain engnest.vn đã active DNS)
