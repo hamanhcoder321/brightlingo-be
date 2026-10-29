@@ -229,14 +229,22 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // Hàm che giấu thông tin Email khách hàng để bảo mật dữ liệu PII (Vá lỗ hổng N-01)
+    const maskEmail = (email?: string) => {
+      if (!email || !email.includes('@')) return undefined;
+      const [local, domain] = email.split('@');
+      if (local.length <= 2) return `${local[0] || '*'}***@${domain}`;
+      return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
+    };
+
     return {
       orderId: orderRecord.id,
       orderCode: orderRecord.order_code,
       status: orderRecord.status,
       amount: orderRecord.total_amount,
       paidAt: orderRecord.paid_at,
-      customerEmail: orderRecord.customer_email,
-      customerName: orderRecord.customer_name,
+      customerEmail: maskEmail(orderRecord.customer_email),
+      // Bỏ customerName khỏi endpoint public để chống dò quét PII người mua
       message:
         orderRecord.status === 'PAID'
           ? 'Giao dịch thanh toán thành công!'

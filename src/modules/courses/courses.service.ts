@@ -200,12 +200,13 @@ export class CoursesService {
     const originalPrice = Math.max(price, Number(data.originalPrice || data.original_price) || price);
     const discountPercent = originalPrice > price ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
     
-    // Bảo vệ URL ảnh & video độc
-    const rawImage = data.image || data.thumbnail || 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=1200&q=80';
-    const image = SecurityUtil.sanitizeUrl(rawImage, 'Ảnh khóa học');
+    // Bảo vệ URL ảnh & video độc (Bỏ link Unsplash cố định theo N-05)
+    const rawImage = data.image || data.thumbnail || '';
+    const image = rawImage && !rawImage.startsWith('/') ? SecurityUtil.sanitizeUrl(rawImage, 'Ảnh khóa học') : rawImage;
     const videoUrl = SecurityUtil.sanitizeUrl(data.videoUrl || data.video_url || '', 'Video bài giảng');
     const resourceLink = SecurityUtil.sanitizeUrl(data.resourceLink || data.resource_link || '', 'Link tài liệu');
-    const ogImage = SecurityUtil.sanitizeUrl(data.ogImage || data.og_image || image, 'Ảnh chia sẻ mạng xã hội');
+    const rawOgImage = data.ogImage || data.og_image || image;
+    const ogImage = rawOgImage && !rawOgImage.startsWith('/') ? SecurityUtil.sanitizeUrl(rawOgImage, 'Ảnh chia sẻ mạng xã hội') : rawOgImage;
 
     const status = (data.status || 'DRAFT').toUpperCase();
     const seoTitle = SecurityUtil.sanitizeText(data.seoTitle || data.seo_title || title);
@@ -338,7 +339,7 @@ export class CoursesService {
     
     // Bảo vệ URL ảnh & video độc khi cập nhật
     const rawImage = data.image ?? data.thumbnail ?? current.image;
-    const image = SecurityUtil.sanitizeUrl(rawImage, 'Ảnh khóa học');
+    const image = rawImage && !rawImage.startsWith('/') ? SecurityUtil.sanitizeUrl(rawImage, 'Ảnh khóa học') : rawImage;
     const rawVideo = data.videoUrl ?? data.video_url ?? current.video_url;
     const videoUrl = SecurityUtil.sanitizeUrl(rawVideo, 'Video bài giảng');
     const rawResource = data.resourceLink ?? data.resource_link ?? current.resource_link;
@@ -346,7 +347,17 @@ export class CoursesService {
     const status = data.status ? String(data.status).toUpperCase() : current.status;
     const seoTitle = SecurityUtil.sanitizeText(data.seoTitle ?? data.seo_title ?? current.seo_title);
     const seoDescription = SecurityUtil.sanitizeText(data.seoDescription ?? data.seo_description ?? current.seo_description);
-    const ogImage = SecurityUtil.sanitizeUrl(data.ogImage ?? data.og_image ?? current.og_image, 'Ảnh OG SEO');
+
+    // Tự động đồng bộ og_image khi đổi ảnh bìa nếu admin không chỉnh riêng trong tab SEO (N-05)
+    let rawOgImage = data.ogImage ?? data.og_image;
+    if (rawOgImage === undefined || rawOgImage === null) {
+      if (data.image || data.thumbnail) {
+        rawOgImage = image;
+      } else {
+        rawOgImage = current.og_image || image;
+      }
+    }
+    const ogImage = rawOgImage && !rawOgImage.startsWith('/') ? SecurityUtil.sanitizeUrl(rawOgImage, 'Ảnh OG SEO') : (rawOgImage || '');
     
     const parsedBenefits = data.benefits ? (typeof data.benefits === 'string' ? JSON.parse(data.benefits) : data.benefits) : current.benefits;
     const benefits = SecurityUtil.sanitizePayload(parsedBenefits);
