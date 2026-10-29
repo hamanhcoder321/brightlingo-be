@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PayOS } from '@payos/node';
 import { DatabaseService } from '@/core/database';
 import { EmailService } from '@/modules/email';
+import { AuditService } from '@/modules/audit/audit.service';
 import { PaymentLoggerService } from './payment-logger.service';
 import { BankNotiWebhookDto } from './dto/banknoti-webhook.dto';
 
@@ -25,6 +26,7 @@ export class PaymentsService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
     private readonly paymentLogger: PaymentLoggerService,
+    private readonly auditService: AuditService,
   ) {}
 
   onModuleInit() {
@@ -254,6 +256,20 @@ export class PaymentsService implements OnModuleInit {
         transactionDate: verifiedData.transactionDateTime,
         notes: `PayOS PaymentLinkId: ${verifiedData.paymentLinkId || 'N/A'}`,
       });
+
+      // Ghi nhận Audit Log hệ thống cho đơn thanh toán tự động (N-09)
+      await this.auditService.log({
+        adminName: 'Hệ thống (PayOS)',
+        action: 'PAYMENT_CONFIRMED',
+        targetEntity: 'order',
+        targetId: order.order_code,
+        details: {
+          orderCode: order.order_code,
+          amount,
+          externalTxId,
+          customerEmail: order.customer_email,
+        },
+      });
     } catch (dbErr: any) {
       await client.query('ROLLBACK');
       this.paymentLogger.logServerError({
@@ -275,8 +291,22 @@ export class PaymentsService implements OnModuleInit {
       const emailResult = await this.emailService.sendDeliveryEmail(order.id, false);
       if (emailResult.success) {
         this.paymentLogger.logEmailSuccess(order.order_code, order.customer_email, emailResult.providerMessageId);
+        await this.auditService.log({
+          adminName: 'Hệ thống (Email)',
+          action: 'EMAIL_DELIVERED',
+          targetEntity: 'order',
+          targetId: order.order_code,
+          details: { orderCode: order.order_code, to: order.customer_email, providerMessageId: emailResult.providerMessageId },
+        });
       } else {
         this.paymentLogger.logEmailFailed(order.order_code, order.customer_email, emailResult.error || 'Unknown error');
+        await this.auditService.log({
+          adminName: 'Hệ thống (Email)',
+          action: 'EMAIL_DELIVERY_FAILED',
+          targetEntity: 'order',
+          targetId: order.order_code,
+          details: { orderCode: order.order_code, to: order.customer_email, error: emailResult.error },
+        });
       }
     } catch (emailErr: any) {
       this.logger.error(`Failed to auto-deliver email for order #${order.order_code}:`, emailErr);
@@ -347,7 +377,7 @@ export class PaymentsService implements OnModuleInit {
     const { bankName, accountNumber, accountName } = await this.getBankConfigFromDb();
     const orderCodeStr = String(options.orderCode);
 
-    const qrCodeUrl = `https://img.vietqr.io/image/${bankName}-${accountNumber}-compact2.png?amount=${options.amount}&addInfo=BL${orderCodeStr}&accountName=${encodeURIComponent(
+    const qrCodeUrl = `https://img.vietqr.io/image/${bankName}-${accountNumber}-compact2.png?amount=${options.amount}&addInfo=EN${orderCodeStr}&accountName=${encodeURIComponent(
       accountName,
     )}`;
 
@@ -364,9 +394,13 @@ export class PaymentsService implements OnModuleInit {
     };
   }
 
-  // Xử lý BankNoti dự phòng nếu cần
+  // Xử lý BankNoti stub (Khai báo webhook cũ - thanh toán chính thức thực hiện qua PayOS có HMAC)
   async handleBankNotiWebhook(payload: BankNotiWebhookDto) {
-    this.logger.log(`Received BankNoti webhook: ${JSON.stringify(payload)}`);
-    return { success: true, gateway: 'BANKNOTI' };
+    this.logger.log(`Received BankNoti webhook ping: ${JSON.stringify(payload)}`);
+    return {
+      success: true,
+      gateway: 'BANKNOTI',
+      message: 'BankNoti endpoint is active for healthcheck. Payment processing is managed via PayOS HMAC webhook.',
+    };
   }
 }

@@ -203,7 +203,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   // Polling kiểm tra trạng thái thanh toán từ Frontend (Tự động hết hạn sau 15 phút)
   async getStatus(orderIdOrCode: string) {
     const orderQueryResult = await this.db.query(
-      `SELECT id, order_code, status, total_amount, paid_at, customer_email, customer_name, created_at 
+      `SELECT id, order_code, course_id, course_slug, status, total_amount, paid_at, customer_email, customer_name, created_at 
        FROM orders 
        WHERE id = $1 OR order_code = $1 OR order_code = $2 OR order_code = $3`,
       [orderIdOrCode, orderIdOrCode.replace(/^(BL|EN)-/, ''), `EN-${orderIdOrCode.replace(/^(BL|EN)-/, '')}`],
@@ -229,14 +229,35 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // Hàm che giấu thông tin Email khách hàng để bảo mật dữ liệu PII (Vá lỗ hổng N-01)
+    const maskEmail = (email?: string) => {
+      if (!email || !email.includes('@')) return undefined;
+      const [local, domain] = email.split('@');
+      if (local.length <= 2) return `${local[0] || '*'}***@${domain}`;
+      return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
+    };
+
+    // Khi đã thanh toán (PAID), tự động lấy link Google Drive tài liệu để học viên truy cập ngay
+    let resourceLink: string | undefined = undefined;
+    if (orderRecord.status === 'PAID') {
+      const courseQueryResult = await this.db.query(
+        `SELECT resource_link FROM courses WHERE id = $1 OR slug = $2`,
+        [orderRecord.course_id, orderRecord.course_slug],
+      );
+      if (courseQueryResult.rows.length > 0 && courseQueryResult.rows[0].resource_link) {
+        resourceLink = courseQueryResult.rows[0].resource_link;
+      }
+    }
+
     return {
       orderId: orderRecord.id,
       orderCode: orderRecord.order_code,
       status: orderRecord.status,
       amount: orderRecord.total_amount,
       paidAt: orderRecord.paid_at,
-      customerEmail: orderRecord.customer_email,
-      customerName: orderRecord.customer_name,
+      customerEmail: maskEmail(orderRecord.customer_email),
+      resourceLink,
+      // Bỏ customerName khỏi endpoint public để chống dò quét PII người mua
       message:
         orderRecord.status === 'PAID'
           ? 'Giao dịch thanh toán thành công!'
