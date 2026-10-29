@@ -18,13 +18,16 @@ export class MailService {
 
   async sendMail(options: SendMailOptions): Promise<{ messageId: string }> {
     const resendApiKey = this.configService.get<string>('mail.resendApiKey');
-    const fromEmail = this.configService.get<string>('mail.fromEmail', 'hotro@engnest.vn');
+    const fromEmail = this.configService.get<string>('mail.fromEmail', 'EngNest <vanmanh8930@gmail.com>');
 
-    const smtpUser = this.configService.get<string>('mail.smtp.user');
-    const smtpPass = this.configService.get<string>('mail.smtp.pass');
+    const relayUrl = this.configService.get<string>('mail.relayUrl');
+    const relaySecret = this.configService.get<string>('mail.relaySecret');
+
+    const smtpUser = this.configService.get<string>('mail.smtp.user', 'vanmanh8930@gmail.com');
+    const smtpPass = this.configService.get<string>('mail.smtp.pass', 'rtprqddqqjljendl');
     const smtpHost = this.configService.get<string>('mail.smtp.host', 'smtp.gmail.com');
-    const smtpPort = this.configService.get<number>('mail.smtp.port', 587);
-    const smtpSecure = this.configService.get<boolean>('mail.smtp.secure', false);
+    const smtpPort = this.configService.get<number>('mail.smtp.port', 465);
+    const smtpSecure = this.configService.get<boolean>('mail.smtp.secure', true);
 
     this.logger.log(`[MailService] Chuẩn bị gửi email tới: ${options.to} | Tiêu đề: "${options.subject}"`);
 
@@ -39,67 +42,98 @@ export class MailService {
       fromEmail.includes('@hotmail.') ||
       fromEmail.includes('onboarding@resend.dev');
 
-    // 1. Nếu địa chỉ gửi là Gmail cá nhân HOẶC Resend chưa có domain:
-    // BẮT BUỘC gửi qua SMTP Gmail (Resend không cho phép gửi bằng đuôi @gmail.com)
-    if (hasSmtp && (isPublicEmailProvider || !hasResend)) {
-      this.logger.log(`[MailService] Người gửi là Gmail (${fromEmail}) -> Gửi trực tiếp qua Gmail SMTP...`);
-      return await this.sendViaSmtp(options, {
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        user: smtpUser!,
-        pass: smtpPass!,
-        from: fromEmail.includes('<') ? fromEmail : `EngNest <${smtpUser}>`,
-      });
-    }
-
-    // 2. Khi domain riêng engnest.vn đã kích hoạt trên Resend (fromEmail là @engnest.vn)
+    // 1. Khi domain riêng engnest.vn đã kích hoạt trên Resend (fromEmail là @engnest.vn)
     if (hasResend && !isPublicEmailProvider) {
       try {
-        this.logger.log(`[MailService] Sử dụng Resend API (Domain: ${fromEmail}) để gửi email...`);
+        this.logger.log(`[MailService] Sử dụng Resend API (Domain doanh nghiệp: ${fromEmail}) để gửi email...`);
         return await this.sendViaResend(options, resendApiKey!, fromEmail);
       } catch (resendErr: any) {
         this.logger.error(`[MailService] Gửi qua Resend thất bại: ${resendErr?.message || resendErr}`);
-        // Fallback tự động sang SMTP nếu có cấu hình
-        if (hasSmtp) {
-          this.logger.warn(`[MailService] Tự động chuyển tiếp sang SMTP gửi dự phòng...`);
-          return await this.sendViaSmtp(options, {
-            host: smtpHost,
-            port: smtpPort,
-            secure: smtpSecure,
-            user: smtpUser!,
-            pass: smtpPass!,
-            from: `EngNest <${smtpUser}>`,
-          });
-        }
-        throw resendErr;
       }
     }
 
-    // 3. Fallback SMTP
-    if (hasSmtp) {
-      return await this.sendViaSmtp(options, {
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        user: smtpUser!,
-        pass: smtpPass!,
-        from: fromEmail.includes('<') ? fromEmail : `EngNest <${smtpUser}>`,
-      });
+    // 2. Nếu người gửi là Gmail cá nhân HOẶC Resend chưa có domain:
+    // Vì Render Free Tier chặn cổng SMTP 25, 465, 587, ưu tiên gửi qua HTTPS Mail Relay (Vercel)
+    if (relayUrl && relaySecret) {
+      try {
+        return await this.sendViaRelay(options, relayUrl, relaySecret, fromEmail);
+      } catch (relayErr: any) {
+        this.logger.warn(`[MailService] Gửi qua Relay thất bại (${relayErr?.message || relayErr}). Thử gửi trực tiếp qua SMTP...`);
+      }
     }
 
-    // 4. Fallback Resend Sandbox nếu không có SMTP
+    // 3. Gửi trực tiếp qua SMTP (Nodemailer) nếu có thông tin (dùng cho local hoặc server mở cổng)
+    if (hasSmtp) {
+      try {
+        return await this.sendViaSmtp(options, {
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpSecure,
+          user: smtpUser,
+          pass: smtpPass,
+          from: fromEmail.includes('<') ? fromEmail : `EngNest <${smtpUser}>`,
+        });
+      } catch (smtpErr: any) {
+        this.logger.error(`[MailService] Gửi qua SMTP thất bại: ${smtpErr?.message || smtpErr}`);
+      }
+    }
+
+    // 4. Fallback Resend Sandbox nếu có cấu hình
     if (hasResend) {
-      return await this.sendViaResend(options, resendApiKey!, fromEmail);
+      try {
+        return await this.sendViaResend(options, resendApiKey!, fromEmail);
+      } catch (e: any) {
+        this.logger.warn(`[MailService] Resend fallback thất bại: ${e?.message}`);
+      }
     }
 
     // 5. Mock môi trường dev
     const mockId = 'mock_msg_' + Date.now();
-    this.logger.warn(`[MailService] Chưa cấu hình SMTP hoặc RESEND_API_KEY. Mock ID: ${mockId}`);
+    this.logger.warn(`[MailService] Không có kênh gửi email khả dụng. Mock ID: ${mockId}`);
     return { messageId: mockId };
   }
 
-  // Phương thức gửi qua SMTP (Gmail tối ưu hoặc máy chủ SMTP riêng)
+  // Gửi qua HTTPS Mail Relay (Bypass cổng SMTP bị Render chặn)
+  private async sendViaRelay(
+    options: SendMailOptions,
+    relayUrl: string,
+    relaySecret: string,
+    fromEmail: string,
+  ): Promise<{ messageId: string }> {
+    this.logger.log(`[MailService] Gửi email qua Relay API HTTPS: ${relayUrl}...`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetch(relayUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-mail-secret': relaySecret,
+        },
+        body: JSON.stringify({
+          to: options.to,
+          subject: options.subject,
+          html: options.html,
+          text: options.text,
+          from: fromEmail,
+        }),
+        signal: controller.signal,
+      });
+
+      const data: any = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || `Relay returned status ${response.status}`);
+      }
+
+      this.logger.log(`✅ [MailService] Đã gửi email thành công qua Relay HTTPS! ID: ${data.messageId}`);
+      return { messageId: data.messageId || 'relay_' + Date.now() };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // Phương thức gửi qua SMTP (Nodemailer trực tiếp với timeout ngắn tránh treo tiến trình)
   private async sendViaSmtp(
     options: SendMailOptions,
     config: { host: string; port: number; secure: boolean; user: string; pass: string; from: string },
@@ -116,9 +150,9 @@ export class MailService {
               user: cleanUser,
               pass: cleanPass,
             },
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 15000,
+            connectionTimeout: 5000,
+            greetingTimeout: 5000,
+            socketTimeout: 8000,
           }
         : {
             host: config.host,
@@ -128,9 +162,9 @@ export class MailService {
               user: cleanUser,
               pass: cleanPass,
             },
-            connectionTimeout: 10000,
-            greetingTimeout: 10000,
-            socketTimeout: 15000,
+            connectionTimeout: 5000,
+            greetingTimeout: 5000,
+            socketTimeout: 8000,
           };
 
       this.smtpTransporter = nodemailer.createTransport(transportConfig);
@@ -185,7 +219,6 @@ export class MailService {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           from: fromEmail,
