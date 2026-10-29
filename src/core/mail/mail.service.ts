@@ -18,13 +18,13 @@ export class MailService {
 
   async sendMail(options: SendMailOptions): Promise<{ messageId: string }> {
     const resendApiKey = this.configService.get<string>('mail.resendApiKey');
-    const fromEmail = this.configService.get<string>('mail.fromEmail', 'EngNest <vanmanh8930@gmail.com>');
+    const fromEmail = this.configService.get<string>('mail.fromEmail', 'hotro@engnest.vn');
 
     const relayUrl = this.configService.get<string>('mail.relayUrl');
     const relaySecret = this.configService.get<string>('mail.relaySecret');
 
-    const smtpUser = this.configService.get<string>('mail.smtp.user', 'vanmanh8930@gmail.com');
-    const smtpPass = this.configService.get<string>('mail.smtp.pass', 'rtprqddqqjljendl');
+    const smtpUser = this.configService.get<string>('mail.smtp.user');
+    const smtpPass = this.configService.get<string>('mail.smtp.pass');
     const smtpHost = this.configService.get<string>('mail.smtp.host', 'smtp.gmail.com');
     const smtpPort = this.configService.get<number>('mail.smtp.port', 465);
     const smtpSecure = this.configService.get<boolean>('mail.smtp.secure', true);
@@ -210,7 +210,7 @@ export class MailService {
 
     // Fallback an toàn cho tài khoản Resend Sandbox chưa kích hoạt domain:
     if (!response.ok && isTestDomain && data.message?.includes('You can only send testing emails')) {
-      const testEmail = 'vanmanh8930@gmail.com';
+      const testEmail = this.configService.get<string>('mail.supportEmail', 'hotro@engnest.vn');
       this.logger.warn(
         `[MailService] Resend Sandbox giới hạn gửi: Tự động chuyển tiếp email tài liệu tới ${testEmail} (Email người mua: ${recipient})`,
       );
