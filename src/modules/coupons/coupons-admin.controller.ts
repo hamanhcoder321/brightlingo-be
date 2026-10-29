@@ -16,7 +16,7 @@ import { CouponsService } from './coupons.service';
 import { CreateCouponDto, UpdateCouponDto, QueryCouponDto } from './dto/coupon.dto';
 
 @UseGuards(AuthGuard)
-@Controller('api/admin/coupons')
+@Controller(['api/admin/coupons', 'admin/coupons'])
 export class CouponsAdminController {
   constructor(private readonly couponsService: CouponsService) {}
 
