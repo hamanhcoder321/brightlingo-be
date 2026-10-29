@@ -3,7 +3,7 @@ import { EmailService } from './email.service';
 import { AuthGuard } from '@/modules/auth/auth.guard';
 
 @UseGuards(AuthGuard)
-@Controller('api/admin/emails')
+@Controller(['api/admin/emails', 'admin/emails'])
 export class EmailController {
   constructor(private readonly emailService: EmailService) {}
 
