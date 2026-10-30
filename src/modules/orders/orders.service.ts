@@ -203,6 +203,62 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  // Khách hàng hoặc cổng thanh toán hủy đơn hàng
+  async cancel(orderIdOrCode: string, reason = 'Khách hủy thanh toán') {
+    const cleanCode = orderIdOrCode.replace(/^(BL|EN)-/, '');
+    const orderRes = await this.db.query(
+      `SELECT id, order_code, status, total_amount, customer_email, customer_name 
+       FROM orders 
+       WHERE id = $1 OR order_code = $1 OR order_code = $2 OR order_code = $3`,
+      [orderIdOrCode, cleanCode, `EN-${cleanCode}`],
+    );
+
+    if (orderRes.rows.length === 0) {
+      throw new NotFoundException(`Không tìm thấy đơn hàng: ${orderIdOrCode}`);
+    }
+
+    const order = orderRes.rows[0];
+
+    // Không thể hủy đơn đã thanh toán thành công
+    if (order.status === 'PAID') {
+      throw new BadRequestException('Không thể hủy đơn hàng đã thanh toán thành công.');
+    }
+
+    if (order.status === 'CANCELLED') {
+      return {
+        success: true,
+        message: 'Đơn hàng đã ở trạng thái hủy.',
+        orderId: order.id,
+        orderCode: order.order_code,
+        status: 'CANCELLED',
+      };
+    }
+
+    await this.db.query(
+      `UPDATE orders SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1`,
+      [order.id],
+    );
+
+    // Hủy Payment Link trên cổng PayOS
+    try {
+      if (this.paymentsService) {
+        await this.paymentsService.cancelPaymentLink(order.order_code, reason);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Could not cancel PayOS payment link: ${err?.message || err}`);
+    }
+
+    this.logger.log(`🚫 Đơn hàng #${order.order_code} đã chuyển sang CANCELLED (Lý do: ${reason})`);
+
+    return {
+      success: true,
+      message: 'Đã hủy đơn hàng thành công.',
+      orderId: order.id,
+      orderCode: order.order_code,
+      status: 'CANCELLED',
+    };
+  }
+
   // Polling kiểm tra trạng thái thanh toán từ Frontend (Tự động hết hạn sau 15 phút)
   async getStatus(orderIdOrCode: string, verifyEmail?: string) {
     const orderQueryResult = await this.db.query(

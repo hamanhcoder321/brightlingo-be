@@ -17,4 +17,10 @@ export class OrdersController {
   async getOrderPaymentStatus(@Param('id') orderId: string, @Query('email') email?: string) {
     return this.ordersService.getStatus(orderId, email);
   }
+
+  // Khách hàng hủy thanh toán hoặc chuyển về từ cổng PayOS Cancel
+  @Post([':id/cancel', ':id/cancel-payment'])
+  async cancelOrder(@Param('id') orderId: string, @Body() body?: { reason?: string }) {
+    return this.ordersService.cancel(orderId, body?.reason);
+  }
 }

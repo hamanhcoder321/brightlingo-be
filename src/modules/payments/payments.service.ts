@@ -139,6 +139,14 @@ export class PaymentsService implements OnModuleInit {
         reason: webhookBody.desc || 'Giao dịch bị hủy hoặc không thành công từ PayOS',
         details: webhookBody,
       });
+
+      // Cập nhật đơn hàng sang CANCELLED trong Database để CMS nhận diện ngay lập tức
+      await this.db.query(
+        `UPDATE orders SET status = 'CANCELLED', updated_at = NOW() 
+         WHERE (order_code = $1 OR order_code = $2 OR order_code = $3) AND status = 'PENDING'`,
+        [orderCodeStr, `EN-${orderCodeStr}`, `BL-${orderCodeStr}`],
+      );
+
       return { success: false, code: webhookBody.code, message: webhookBody.desc };
     }
 
@@ -392,6 +400,21 @@ export class PaymentsService implements OnModuleInit {
       paymentLinkId: 'fallback_' + Date.now(),
       expiresInSeconds: 600,
     };
+  }
+
+  // Hủy link thanh toán trên cổng PayOS khi khách bấm hủy
+  async cancelPaymentLink(orderCode: string | number, reason = 'Khách hủy thanh toán') {
+    if (!this.payos) return null;
+    try {
+      const numericCode = Number(String(orderCode).replace(/[^0-9]/g, ''));
+      if (!numericCode) return null;
+      const res = await (this.payos.paymentRequests as any).cancel(numericCode, reason);
+      this.logger.log(`Cancelled PayOS Payment Link #${numericCode}`);
+      return res;
+    } catch (err: any) {
+      this.logger.warn(`Could not cancel PayOS payment link #${orderCode}: ${err?.message || err}`);
+      return null;
+    }
   }
 
   // Xử lý BankNoti stub (Khai báo webhook cũ - thanh toán chính thức thực hiện qua PayOS có HMAC)
