@@ -38,9 +38,10 @@ export class CouponsService implements OnModuleInit {
         code: 'BRIGHT50',
         type: 'FIXED',
         value: 50000,
+        minOrderAmount: 100000,
         scope: 'ALL',
         status: 'ACTIVE',
-        note: 'Mã giảm trực tiếp 50.000đ',
+        note: 'Mã giảm trực tiếp 50.000đ cho đơn từ 100.000đ',
       },
     ];
 
@@ -50,15 +51,23 @@ export class CouponsService implements OnModuleInit {
           `SELECT id FROM coupons WHERE code = $1 AND deleted_at IS NULL`,
           [c.code],
         );
+        const minOrder = (c as any).minOrderAmount || 0;
         if (existing.rows.length === 0) {
           await this.databaseService.query(
             `INSERT INTO coupons (
               code, type, value, min_order_amount, max_discount_amount,
               scope, start_date, end_date, usage_limit, status, note, created_at, updated_at
-            ) VALUES ($1, $2, $3, 0, NULL, $4, NOW(), NOW() + INTERVAL '10 years', 1000, $5, $6, NOW(), NOW())`,
-            [c.code, c.type, c.value, c.scope, c.status, c.note],
+            ) VALUES ($1, $2, $3, $4, NULL, $5, NOW(), NOW() + INTERVAL '10 years', 1000, $6, $7, NOW(), NOW())`,
+            [c.code, c.type, c.value, minOrder, c.scope, c.status, c.note],
           );
           this.logger.log(`Initialized default active coupon: ${c.code}`);
+        } else if (c.code === 'BRIGHT50') {
+          // Đảm bảo cập nhật BRIGHT50 đã tồn tại có min_order_amount = 100000 (Fix N-20)
+          await this.databaseService.query(
+            `UPDATE coupons 
+             SET min_order_amount = 100000, note = 'Mã giảm trực tiếp 50.000đ cho đơn từ 100.000đ' 
+             WHERE code = 'BRIGHT50' AND (min_order_amount IS NULL OR min_order_amount < 100000)`,
+          );
         }
       } catch (err: any) {
         // Silent catch if coupons table does not exist or has different schema
@@ -159,7 +168,14 @@ export class CouponsService implements OnModuleInit {
       calculatedDiscountAmount = effectiveCoursePrice;
     }
 
-    const calculatedFinalPrice = Math.max(0, effectiveCoursePrice - calculatedDiscountAmount);
+    const calculatedFinalPrice = effectiveCoursePrice - calculatedDiscountAmount;
+
+    // Chặn giảm giá đưa đơn hàng về 0đ hoặc dưới mức thanh toán tối thiểu (Fix N-20)
+    if (calculatedFinalPrice < 10000) {
+      throw new BadRequestException(
+        `Mã giảm giá không áp dụng được cho khóa học này do số tiền sau giảm thấp hơn mức thanh toán tối thiểu (10.000đ).`,
+      );
+    }
 
     return {
       code: activeCoupon.code,

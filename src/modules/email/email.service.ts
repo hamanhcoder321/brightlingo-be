@@ -95,7 +95,7 @@ export class EmailService {
     const { supportEmail, supportPhone, siteName } = await this.getBrandingSettings();
     const paymentTime = order.paid_at ? new Date(order.paid_at).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN');
     const amountPaid = formatVND(order.total_amount);
-    const resourceLink = order.resource_link || 'https://engnest.vn/lien-he';
+    const resourceLink = order.resource_link || 'https://engnest.vn/giao-tai-lieu-so';
 
     const replacements: Record<string, string> = {
       '{{customer_name}}': order.customer_name || 'Học viên',

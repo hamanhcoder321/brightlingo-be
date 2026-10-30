@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { DatabaseService } from '@/core/database';
 import { PaymentsService } from '@/modules/payments';
 import { SecurityUtil } from '@/common/security/security.util';
@@ -116,7 +116,10 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const totalAmount = Math.max(0, unitPrice - discountAmount);
+    const totalAmount = unitPrice - discountAmount;
+    if (totalAmount < 10000) {
+      throw new BadRequestException('Số tiền thanh toán đơn hàng sau giảm giá tối thiểu phải từ 10.000đ.');
+    }
     const orderId = 'ord_' + Date.now();
     // Sinh số mã đơn nguyên dương duy nhất tương thích 100% với PayOS
     const numericOrderCode = 100000 + (Math.floor(Date.now() / 1000) % 900000);
@@ -201,7 +204,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Polling kiểm tra trạng thái thanh toán từ Frontend (Tự động hết hạn sau 15 phút)
-  async getStatus(orderIdOrCode: string) {
+  async getStatus(orderIdOrCode: string, verifyEmail?: string) {
     const orderQueryResult = await this.db.query(
       `SELECT id, order_code, course_id, course_slug, status, total_amount, paid_at, customer_email, customer_name, created_at 
        FROM orders 
@@ -237,15 +240,26 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
     };
 
-    // Khi đã thanh toán (PAID), tự động lấy link Google Drive tài liệu để học viên truy cập ngay
+    // Khi đã thanh toán (PAID), tự động lấy link Google Drive tài liệu
+    // Bảo mật N-01: Chỉ trả resourceLink khi:
+    // 1. Truy vấn bằng orderId bí mật (UUID / ID nội bộ mà hệ thống sinh ra lúc tạo đơn)
+    // HOẶC 2. Có email đối chiếu khớp với email người mua
+    // Ngăn chặn kẻ xấu đoán mò mã 6 số công khai (EN-xxxxxx) để lấy tài liệu trái phép.
     let resourceLink: string | undefined = undefined;
     if (orderRecord.status === 'PAID') {
-      const courseQueryResult = await this.db.query(
-        `SELECT resource_link FROM courses WHERE id = $1 OR slug = $2`,
-        [orderRecord.course_id, orderRecord.course_slug],
+      const isQueriedBySecretOrderId = (orderIdOrCode === orderRecord.id);
+      const isEmailVerified = Boolean(
+        verifyEmail && verifyEmail.toLowerCase().trim() === (orderRecord.customer_email || '').toLowerCase().trim(),
       );
-      if (courseQueryResult.rows.length > 0 && courseQueryResult.rows[0].resource_link) {
-        resourceLink = courseQueryResult.rows[0].resource_link;
+
+      if (isQueriedBySecretOrderId || isEmailVerified) {
+        const courseQueryResult = await this.db.query(
+          `SELECT resource_link FROM courses WHERE id = $1 OR slug = $2`,
+          [orderRecord.course_id, orderRecord.course_slug],
+        );
+        if (courseQueryResult.rows.length > 0 && courseQueryResult.rows[0].resource_link) {
+          resourceLink = courseQueryResult.rows[0].resource_link;
+        }
       }
     }
 

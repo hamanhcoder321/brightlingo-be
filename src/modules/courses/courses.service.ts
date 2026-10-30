@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { DatabaseService } from '@/core/database';
 import { SecurityUtil } from '@/common/security/security.util';
 import { AuditService } from '@/modules/audit/audit.service';
@@ -36,11 +36,116 @@ export const RESERVED_COURSE_SLUGS = new Set([
 ]);
 
 @Injectable()
-export class CoursesService {
+export class CoursesService implements OnModuleInit {
+  private readonly logger = new Logger(CoursesService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly auditService: AuditService,
   ) {}
+
+  async onModuleInit() {
+    await this.cleanupCourseData();
+  }
+
+  /**
+   * Tự động dọn dẹp và chuẩn hóa dữ liệu khóa học, thương hiệu (C6, H1, N-19, L4)
+   */
+  private async cleanupCourseData() {
+    try {
+      // 1. Cập nhật mọi resource_link còn chứa 'brightlingo' sang 'engnest' (Fix C6, N-19)
+      await this.db.query(`
+        UPDATE courses 
+        SET resource_link = REPLACE(resource_link, 'brightlingo', 'engnest')
+        WHERE resource_link ILIKE '%brightlingo%'
+      `);
+
+      // 2. Sửa ảnh DevGear ở khóa english-for-real-life (Fix C6)
+      await this.db.query(`
+        UPDATE courses 
+        SET image = 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80',
+            og_image = 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80'
+        WHERE slug = 'english-for-real-life' AND (image ILIKE '%image-1793184755340%' OR image ILIKE '%devgear%')
+      `);
+
+      // 3. Đa dạng hóa thời lượng khóa học thay vì 16/18 khóa bị ghi cứng "16 giờ" (Fix H1)
+      const durationMap: Record<string, string> = {
+        'business-english-for-global-work': '24 giờ',
+        'phong-van-xin-viec-tap-doan-da-quoc-gia': '10 giờ',
+        'cau-truc-cau-va-phan-xa-dat-cau-nhanh': '8 giờ',
+        'tieng-anh-hop-meeting-va-brainstorming': '14 giờ',
+        'viet-email-thuong-mai-chuyen-nghiep': '6 giờ',
+        'he-thong-12-thi-ung-dung-thuc-te': '12 giờ',
+        'english-for-real-life': '12 giờ',
+        'bo-de-du-doan-ielts-quy-moi-nhat': '20 giờ',
+        'ielts-writing-master-kit': '22 giờ',
+        'tieng-anh-nha-hang-cafe-smalltalk': '8 giờ',
+        'hack-3000-tu-vung-theo-chu-de': '15 giờ',
+        'phan-xa-giao-tiep-30-ngay': '18 giờ',
+        'lay-goc-tieng-anh-tu-so-0': '16 giờ',
+        'toeic-900-cap-toc-nghe-doc': '28 giờ',
+        'ngu-phap-1000-mau-cau-so': '14 giờ',
+        'thuyet-trinh-dam-phan-tieng-anh': '16 giờ',
+        'phat-am-chuan-my-shadowing': '10 giờ',
+        'ielts-reading-skimming-scanning': '18 giờ',
+        'dam-thoai-du-lich-san-bay': '7 giờ',
+        'ielts-speaking-band-8-formula': '15 giờ',
+      };
+
+      for (const [slug, dur] of Object.entries(durationMap)) {
+        await this.db.query(`
+          UPDATE courses 
+          SET video_demo_duration = $1,
+              curriculum = jsonb_set(
+                COALESCE(curriculum, '{}'::jsonb),
+                '{totalDuration}',
+                to_jsonb($2::text)
+              )
+          WHERE slug = $3 AND (video_demo_duration IS NULL OR video_demo_duration = '16 giờ' OR video_demo_duration = '9 giờ' OR video_demo_duration = 'Tổng thời lượng: 16 giờ')
+        `, [dur, dur, slug]);
+      }
+
+      // 4. Sửa FAQ con 3 tuổi ở các khóa người lớn (Fix H1)
+      const adultCourses = ['thuyet-trinh-dam-phan-tieng-anh', 'english-for-real-life', 'hack-3000-tu-vung-theo-chu-de'];
+      for (const slug of adultCourses) {
+        const res = await this.db.query('SELECT curriculum FROM courses WHERE slug = $1', [slug]);
+        if (res.rows.length > 0 && res.rows[0].curriculum?.faqs) {
+          let faqs = res.rows[0].curriculum.faqs;
+          let changed = false;
+          faqs = faqs.map((f: any) => {
+            if (f.question && (f.question.includes('3 tuổi') || f.question.includes('Con tôi'))) {
+              changed = true;
+              return {
+                id: f.id || 'faq-adult',
+                question: 'Người đi làm bận rộn có theo kịp lộ trình không?',
+                answer: 'Hoàn toàn kịp bạn nhé! Các bài học được thiết kế cô đọng 10-15 phút, tài liệu tải về máy học trọn đời linh hoạt.'
+              };
+            }
+            return f;
+          });
+          if (changed) {
+            await this.db.query(`
+              UPDATE courses 
+              SET curriculum = jsonb_set(curriculum, '{faqs}', $1::jsonb) 
+              WHERE slug = $2
+            `, [JSON.stringify(faqs), slug]);
+          }
+        }
+      }
+
+      // 5. Chuẩn hóa email admin trong bảng admins và audit_logs (Fix C6, L4)
+      await this.db.query(`
+        UPDATE admins SET email = 'admin@engnest.vn' WHERE email ILIKE '%brightlingo%'
+      `);
+      await this.db.query(`
+        UPDATE audit_logs SET actor_email = 'admin@engnest.vn' WHERE actor_email ILIKE '%brightlingo%'
+      `);
+
+      this.logger.log('✅ Course data & branding cleanup completed successfully');
+    } catch (err: any) {
+      this.logger.warn(`⚠️ Course data cleanup notice: ${err?.message || err}`);
+    }
+  }
 
   // Lấy danh sách danh mục (Categories)
   async getCategories() {
@@ -192,9 +297,9 @@ export class CoursesService {
       data.categoryName || data.category_name ? SecurityUtil.sanitizeText(data.categoryName || data.category_name) : undefined,
     );
 
-    const formatBadge = SecurityUtil.sanitizeText(data.tagBadge || data.tag_badge || '32 video · 6 PDF · Audio');
+    const formatBadge = SecurityUtil.sanitizeText(data.tagBadge || data.tag_badge || '');
     const shortDescription = SecurityUtil.sanitizeText(data.description || formatBadge || title);
-    const duration = SecurityUtil.sanitizeText(data.duration || data.videoDemoDuration || data.curriculum?.totalDuration || '9 giờ');
+    const duration = SecurityUtil.sanitizeText(data.duration || data.videoDemoDuration || data.curriculum?.totalDuration || '');
     const typeBadge = SecurityUtil.sanitizeText(data.typeBadge || data.type_badge || 'Trọn đời');
     const price = Math.max(0, Number(data.price) || 0);
     const originalPrice = Math.max(price, Number(data.originalPrice || data.original_price) || price);
@@ -328,7 +433,7 @@ export class CoursesService {
       data.description ?? currentCurr.description ?? current.tag_badge ?? title,
     );
     const duration = SecurityUtil.sanitizeText(
-      data.duration ?? data.videoDemoDuration ?? data.curriculum?.totalDuration ?? currentCurr.totalDuration ?? current.video_demo_duration ?? '9 giờ',
+      data.duration ?? data.videoDemoDuration ?? data.curriculum?.totalDuration ?? currentCurr.totalDuration ?? current.video_demo_duration ?? '',
     );
     const typeBadge = SecurityUtil.sanitizeText(data.typeBadge ?? data.type_badge ?? current.type_badge);
     const price = data.price !== undefined ? Math.max(0, Number(data.price)) : current.price;
@@ -689,7 +794,7 @@ export class CoursesService {
       : sectionsCount > 0
       ? `${sectionsCount} phần học • Video HD & Ebook PDF`
       : 'Video bài giảng HD • Ebook PDF & Audio';
-    const totalDuration = rawCurriculum.totalDuration || row.video_demo_duration || '9 giờ';
+    const totalDuration = rawCurriculum.totalDuration || row.video_demo_duration || '';
     const courseFaqs = Array.isArray(rawCurriculum.faqs) ? rawCurriculum.faqs : [];
     const actualBuyers = row.buyers_count !== undefined ? parseInt(row.buyers_count, 10) : 0;
     const isSocialProofEnabled = row.is_social_proof_enabled !== false;

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Body } from '@nestjs/common';
+import { Controller, Post, Get, Param, Body, Query } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 
@@ -14,7 +14,7 @@ export class OrdersController {
 
   // Khách hàng kiểm tra trạng thái thanh toán đơn hàng (Polling ở Bước 2)
   @Get(':id/status')
-  async getOrderPaymentStatus(@Param('id') orderId: string) {
-    return this.ordersService.getStatus(orderId);
+  async getOrderPaymentStatus(@Param('id') orderId: string, @Query('email') email?: string) {
+    return this.ordersService.getStatus(orderId, email);
   }
 }
