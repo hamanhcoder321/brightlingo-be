@@ -95,7 +95,7 @@ export class EmailService {
     const { supportEmail, supportPhone, siteName } = await this.getBrandingSettings();
     const paymentTime = order.paid_at ? new Date(order.paid_at).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN');
     const amountPaid = formatVND(order.total_amount);
-    const resourceLink = order.resource_link || 'https://engnest.vn/giao-tai-lieu-so';
+    const resourceLink = order.resource_link || 'https://pub-7882fb2772604ee8b8c80f6aa7e66d0a.r2.dev/documents/engnest-tieng-anh-giao-tiep-co-ban.pdf';
 
     const replacements: Record<string, string> = {
       '{{customer_name}}': order.customer_name || 'Học viên',
@@ -289,8 +289,8 @@ export class EmailService {
       '{so_tien}': '799.000',
       '{{payment_time}}': new Date().toLocaleString('vi-VN'),
       '{thoi_gian}': new Date().toLocaleString('vi-VN'),
-      '{{resource_link}}': 'https://drive.google.com/drive/folders/test-engnest-demo',
-      '{link_drive}': 'https://drive.google.com/drive/folders/test-engnest-demo',
+      '{{resource_link}}': 'https://pub-7882fb2772604ee8b8c80f6aa7e66d0a.r2.dev/documents/engnest-tieng-anh-giao-tiep-co-ban.pdf',
+      '{link_drive}': 'https://pub-7882fb2772604ee8b8c80f6aa7e66d0a.r2.dev/documents/engnest-tieng-anh-giao-tiep-co-ban.pdf',
       '{{support_email}}': supportEmail,
       '{{support_phone}}': supportPhone,
       '{{site_name}}': siteName,

@@ -328,7 +328,7 @@ INSERT INTO courses (
         "accountNumber": "0399046519",
         "orderCodePrefix": "BL"
     }'::jsonb,
-    'https://drive.google.com/drive/folders/tai-lieu-english-for-real-life-vip',
+    'https://pub-7882fb2772604ee8b8c80f6aa7e66d0a.r2.dev/documents/engnest-tieng-anh-giao-tiep-co-ban.pdf',
     true,
     'PUBLISHED'
 ) ON CONFLICT (slug) DO NOTHING;

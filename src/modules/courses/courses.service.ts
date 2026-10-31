@@ -53,11 +53,16 @@ export class CoursesService implements OnModuleInit {
    */
   private async cleanupCourseData() {
     try {
-      // 1. Cập nhật mọi resource_link còn chứa 'brightlingo' sang 'engnest' (Fix C6, N-19)
+      // 1. Gắn file tài liệu học tập chính thức PDF (R2 CDN) cho toàn bộ các khóa học trên production
       await this.db.query(`
         UPDATE courses 
-        SET resource_link = REPLACE(resource_link, 'brightlingo', 'engnest')
-        WHERE resource_link ILIKE '%brightlingo%'
+        SET resource_link = 'https://pub-7882fb2772604ee8b8c80f6aa7e66d0a.r2.dev/documents/engnest-tieng-anh-giao-tiep-co-ban.pdf'
+        WHERE resource_link IS NULL 
+           OR resource_link = '' 
+           OR resource_link ILIKE '%drive.google.com%' 
+           OR resource_link ILIKE '%brightlingo%'
+           OR resource_link ILIKE '%tai-lieu-english-for-real-life-vip%'
+           OR resource_link ILIKE '%test-engnest-demo%';
       `);
 
       // 2. Sửa ảnh DevGear ở khóa english-for-real-life (Fix C6)
